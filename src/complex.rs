@@ -1,22 +1,25 @@
-use std::fmt::{Debug, Formatter, Result};
-use std::ops::{Add, Sub, Mul, Div};
+use std::fmt;
+use std::ops::{Add, Sub, Mul};
 
-use packed_simd::{f64x2, f64x4};
+use packed_simd::f64x2;
 
 //#################################################################################################
 //
-//                                          c64 type
+//                                          c128 type
 //
 //#################################################################################################
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
-pub struct c64(f64x2);
+pub struct c128(f64x2);
 
-impl c64 {
+impl c128 {
+    pub const ZERO: c128 = c128::new(0.0, 0.0);
+    pub const ONE: c128 = c128::new(1.0, 0.0);
+
     #[inline]
-    pub fn new(re: f64, im: f64) -> c64 {
-        c64(f64x2::new(re, im))
+    pub const fn new(re: f64, im: f64) -> c128 {
+        c128(f64x2::new(re, im))
     }
 
     #[inline(always)]
@@ -35,82 +38,61 @@ impl c64 {
     }
 
     #[inline]
-    pub fn eq<const E: f64>(self, rhs: c64) -> bool {
-        (self.0 - rhs.0).abs().le(f64x2::splat(E)).all()
+    pub fn eq<const E: f64>(lhs: c128, rhs: c128) -> bool {
+        (lhs.0 - rhs.0).abs().le(f64x2::splat(E)).all()
     }
 }
 
 //#################################################################################################
 //
-//                                       c64 operations
+//                                       c128 operations
 //
 //#################################################################################################
 
-impl Add<c64> for c64 {
-    type Output = c64;
+impl Add<c128> for c128 {
+    type Output = c128;
 
     #[inline]
-    fn add(self, rhs: c64) -> c64 {
-        c64(self.0 + rhs.0)
+    fn add(self, rhs: c128) -> c128 {
+        c128(self.0 + rhs.0)
     }
 }
 
-impl Sub<c64> for c64 {
-    type Output = c64;
+impl Sub<c128> for c128 {
+    type Output = c128;
 
     #[inline]
-    fn sub(self, rhs: c64) -> c64 {
-        c64(self.0 - rhs.0)
+    fn sub(self, rhs: c128) -> c128 {
+        c128(self.0 - rhs.0)
     }
 }
 
-impl Mul<c64> for c64 {
-    type Output = c64;
+impl Mul<c128> for c128 {
+    type Output = c128;
 
     #[inline]
-    fn mul(self, rhs: c64) -> c64 {
-        let tmp = f64x4::mul(
-            f64x4::new(self.re(), self.im(), self.re(), self.im()),
-            f64x4::new(rhs.re(), -rhs.im(), rhs.im(), rhs.re()),
-        );
-        unsafe {
-            c64(f64x2::add(
-                f64x2::new(tmp.extract_unchecked(0), tmp.extract_unchecked(2)),
-                f64x2::new(tmp.extract_unchecked(1), tmp.extract_unchecked(3)),
-            ))
-        }
-    }
-}
-
-impl Div<c64> for c64 {
-    type Output = c64;
-
-    #[inline]
-    fn div(self, rhs: c64) -> c64 {
-        let tmp = f64x4::mul(
-            f64x4::new(self.re(), self.im(), self.im(), -self.re()),
-            f64x4::new(rhs.re(), rhs.im(), rhs.re(), rhs.im()),
-        );
-        unsafe {
-            c64(f64x2::mul(
-                f64x2::add(
-                    f64x2::new(tmp.extract_unchecked(0), tmp.extract_unchecked(2)),
-                    f64x2::new(tmp.extract_unchecked(1), tmp.extract_unchecked(3)),
-                ),
-                f64x2::splat(rhs.norm_sqr().recip()),
-            ))
-        }
+    fn mul(self, rhs: c128) -> c128 {
+        c128(f64x2::add(
+            f64x2::mul(
+                self.0,
+                f64x2::splat(rhs.re()),
+            ),
+            f64x2::mul(
+                f64x2::new(-self.im(), self.re()),
+                f64x2::splat(rhs.im()),
+            ),
+        ))
     }
 }
 
 //#################################################################################################
 //
-//                                         c64 fmt
+//                                         c128 fmt
 //
 //#################################################################################################
 
-impl Debug for c64 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+impl fmt::Debug for c128 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}{:+?}i", self.re(), self.im())
     }
 }
@@ -128,33 +110,25 @@ mod tests {
     use test::{Bencher, black_box};
 
     #[test]
-    fn add_sub_test() {
-        let z1 = c64::new(12.0, 53.5);
-        let z2 = c64::new(-67.0, 18.5);
+    fn correctness_test() {
+        let z1 = c128::new(12.0, 53.5);
+        let z2 = c128::new(-67.0, 18.5);
 
         let add = z1 + z2;
-        assert!(c64::eq::<1e-14>(add, c64::new(-55.0, 72.0)));
+        assert!(c128::eq::<1e-14>(add, c128::new(-55.0, 72.0)));
 
         let sub = z1 - z2;
-        assert!(c64::eq::<1e-14>(sub, c64::new(79.0, 35.0)));
-    }
-
-    #[test]
-    fn mul_div_test() {
-        let z1 = c64::new(12.0, 53.5);
-        let z2 = c64::new(-67.0, 18.5);
+        assert!(c128::eq::<1e-14>(sub, c128::new(79.0, 35.0)));
 
         let mul = z1 * z2;
-        assert!(c64::eq::<1e-14>(mul, c64::new(-1793.75, -3362.5)));
-
-        let div = z1 / z2;
-        assert!(c64::eq::<1e-14>(div, c64::new(0.0384476067270375, -0.787891332470893)));
+        assert!(c128::eq::<1e-14>(mul, c128::new(-1793.75, -3362.5)));
     }
+
 
     #[bench]
     fn add_bench(b: &mut Bencher) {
-        let z1 = c64::new(12.0, 53.5);
-        let z2 = c64::new(-67.0, 18.5);
+        let z1 = c128::new(12.0, 53.5);
+        let z2 = c128::new(-67.0, 18.5);
 
         b.iter(|| {
             for _ in 0..100 {
@@ -165,24 +139,12 @@ mod tests {
 
     #[bench]
     fn mul_bench(b: &mut Bencher) {
-        let z1 = c64::new(12.0, 53.5);
-        let z2 = c64::new(-67.0, 18.5);
+        let z1 = c128::new(12.0, 53.5);
+        let z2 = c128::new(-67.0, 18.5);
 
         b.iter(|| {
             for _ in 0..100 {
                 black_box(black_box(z1) * black_box(z2));
-            }
-        })
-    }
-
-    #[bench]
-    fn div_bench(b: &mut Bencher) {
-        let z1 = c64::new(12.0, 53.5);
-        let z2 = c64::new(-67.0, 18.5);
-
-        b.iter(|| {
-            for _ in 0..100 {
-                black_box(black_box(z1) / black_box(z2));
             }
         })
     }
