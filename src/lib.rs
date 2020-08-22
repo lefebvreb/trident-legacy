@@ -1,5 +1,4 @@
 mod complex;
-mod error;
 
 pub mod computer;
 pub mod gates;

@@ -1,96 +1,85 @@
-use crate::computer::Computer;
-use crate::error::{Error, QRustResult};
+use crate::computer::Address;
 
-#[derive(Copy, Clone)]
-enum ApplyGate {
-    Unitary {
-        gate_id: char,
-        target: u16,
-    },
-    Controlled {
-        gate_id: char,
-        target: u16,
-        control: u16,
-    },
+//#################################################################################################
+//
+//                                       Instruction
+//
+//#################################################################################################
+
+pub(crate) struct Instruction {
+    pub(crate) target: Address,
+    pub(crate) gate_name: &'static str,
+    pub(crate) control: Option<Address>,
 }
 
-pub struct ProgramBuilder<'a> {
-    computer: &'a Computer,
-    instructions: Vec<ApplyGate>,
+//#################################################################################################
+//
+//                                       Program Builder
+//
+//#################################################################################################
+
+pub struct ProgramBuilder {
+    initial_state: u64,
+    instructions: Vec<Instruction>,
 }
 
-pub struct Program<'a> {
-    computer: &'a Computer,
-    instructions: Box<[ApplyGate]>,
-}
-
-impl<'a> Program<'a> {
-    pub fn new(computer: &'a Computer) -> ProgramBuilder<'a> {
-        let instructions = Vec::new();
-        
-        ProgramBuilder {
-            computer,
-            instructions,
-        }
-    }
-
-    pub fn run(&self) {
-
-    }
-}
-
-impl ProgramBuilder<'_> {
-    pub fn apply_gate(&mut self, gate_id: char, target: u16) -> &mut Self {
-        self.instructions.push(ApplyGate::Unitary {
-            gate_id,
+impl ProgramBuilder {
+    pub fn apply(&mut self, target: Address, gate_name: &'static str) -> &mut ProgramBuilder {
+        let control = None;
+        self.instructions.push(Instruction {
             target,
+            gate_name,
+            control,
         });
+
         self
     }
 
-    pub fn apply_controlled_gate(&mut self, gate_id: char, target: u16, control: u16) -> &mut Self {
-        self.instructions.push(ApplyGate::Controlled {
-            gate_id,
+    pub fn apply_controlled(&mut self, target: Address, gate_name: &'static str, control: Address) -> &mut ProgramBuilder {
+        let control = Some(control);
+
+        self.instructions.push(Instruction {
             target,
+            gate_name,
             control,
         });
         self
     }
 
-    pub fn build(&self) -> QRustResult<Program> {
-        let computer = self.computer;
-        
-        let instructions = {
-            let mut res = Vec::with_capacity(self.instructions.len());
+    pub fn measure(self, samples: std::num::NonZeroU16) -> Program {
+        let initial_state = self.initial_state;
 
-            for instruction in self.instructions.iter() {
-                match instruction {
-                    ApplyGate::Unitary {gate_id, target} => {
-                        if !self.computer.contains_gate(gate_id) {
-                            return Err(Error::new());
-                        } else if *target < self.computer.size() {
-                            return Err(Error::new());
-                        }
-                    },
-                    ApplyGate::Controlled {gate_id, target, control} => {
-                        if !self.computer.contains_gate(gate_id) {
-                            return Err(Error::new());
-                        } else if *target < self.computer.size() {
-                            return Err(Error::new());
-                        } else if *control < self.computer.size() {
-                            return Err(Error::new());
-                        }
-                    },
-                }
-                res.push(*instruction);
-            }
-            
-            res.into()
-        };
+        let instructions = self.instructions.into();
 
-        Ok(Program {
-            computer,
+        let samples = samples.into();
+
+        Program {
+            initial_state,
             instructions,
-        })
+            samples,
+        }
+    } 
+}
+
+//#################################################################################################
+//
+//                                           Program
+//
+//#################################################################################################
+
+pub struct Program {
+    pub(crate) initial_state: u64,
+    pub(crate) instructions: Box<[Instruction]>,
+    pub(crate) samples: u16,
+}
+
+impl Program {
+    pub fn new(initial_state: u64) -> ProgramBuilder {
+        let instructions = Vec::new();
+
+        ProgramBuilder {
+            initial_state, 
+            instructions,
+        }
     }
 }
