@@ -24,7 +24,7 @@ pub struct ProgramBuilder {
 }
 
 impl ProgramBuilder {
-    pub fn apply(&mut self, target: Address, gate_name: &'static str) -> &mut ProgramBuilder {
+    pub fn apply(mut self, target: Address, gate_name: &'static str) -> ProgramBuilder {
         let control = None;
         self.instructions.push(Instruction {
             target,
@@ -35,7 +35,7 @@ impl ProgramBuilder {
         self
     }
 
-    pub fn apply_controlled(&mut self, target: Address, gate_name: &'static str, control: Address) -> &mut ProgramBuilder {
+    pub fn apply_controlled(mut self, target: Address, gate_name: &'static str, control: Address) -> ProgramBuilder {
         let control = Some(control);
 
         self.instructions.push(Instruction {
@@ -46,12 +46,16 @@ impl ProgramBuilder {
         self
     }
 
-    pub fn measure(self, samples: std::num::NonZeroU16) -> Program {
+    pub fn measure(self, samples: u16) -> Program {
+        if samples == 0 {
+            panic!("Samples count cannot be null")
+        }
+
         let initial_state = self.initial_state;
 
         let instructions = self.instructions.into();
 
-        let samples = samples.into();
+        let samples = samples;
 
         Program {
             initial_state,

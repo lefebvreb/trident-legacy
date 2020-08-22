@@ -1,10 +1,10 @@
-use crate::complex::c64;
-use crate::gates::Gate;
-use crate::program::Program;
-
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
+
+use crate::complex::c64;
+use crate::gates::Gate;
+use crate::program::Program;
 
 pub type Address = u8;
 
@@ -20,9 +20,24 @@ pub struct ComputerBuilder {
 }
 
 impl ComputerBuilder {
-    pub fn add_gate(&mut self, gate_name: &'static str, gate: Gate) -> &mut ComputerBuilder {
-        self.gates.insert(gate_name, gate);
+    pub fn add_gate(mut self, gate_name: &'static str, gate: Gate) -> ComputerBuilder {
+        if !gate.is_unitary() {
+            panic!(
+                "Gate \"{}\" is not unitary", 
+                gate_name,
+            );
+        }
+        if self.gates.insert(gate_name, gate).is_some() {
+            panic!(
+                "Gate name duplicata: \"{}\"", 
+                gate_name
+            );
+        };
         self
+    }
+
+    pub fn add_standard_gates(mut self) -> ComputerBuilder {
+        unimplemented!()
     }
 
     pub fn build(self) -> Computer {
@@ -31,27 +46,39 @@ impl ComputerBuilder {
         let pro_que = ProQue::builder()
             .src(include_str!("opencl/kernels.cl"))
             .dims(1 << size)
-            .build().expect("Could not build compute shader");
+            .build().expect("Cannot build compute shader");
 
         let amplitudes = pro_que.create_buffer::<c64>()
-            .expect("Could not create amplitudes buffer");
+            .expect("Cannot create amplitudes buffer");
 
         let gates = self.gates;
 
         let initialize = pro_que.kernel_builder("initialize")
             .arg(&amplitudes)
+            .arg(0u64)
             .build()
-            .expect("Could not build `initialize` kernel");
+            .expect("Cannot build `initialize` kernel");
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
             .arg(&amplitudes)
+            .arg(0u8)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
             .build()
-            .expect("Could not build `apply_gate` kernel");
+            .expect("Cannot build `apply_gate` kernel");
 
         let apply_controlled_gate = pro_que.kernel_builder("apply_controlled_gate")
             .arg(&amplitudes)
+            .arg(0u8)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
+            .arg(c64::ZERO)
+            .arg(0u8)
             .build()
-            .expect("Could not build `apply_controlled_gate` kernel");
+            .expect("Cannot build `apply_controlled_gate` kernel");
 
         Computer {
             size,
@@ -102,29 +129,23 @@ impl Computer {
         for instruction in program.instructions.iter() {
             if instruction.target >= self.size {
                 panic!(
-                    "Given target's address `{}` is out of the `{}` qbits register", 
+                    "Target's address `{}` is out of the `{}` qbits register", 
                     instruction.target,
                     self.size,
                 );
             } 
-            if let Some(gate) = self.gates.get(instruction.gate_name) {
-                if !gate.is_unitary() {
-                    panic!(
-                        "Gate \"{}\" is not unitary", 
-                        instruction.gate_name,
-                    );
-                }
-            } else {
+            if !self.gates.contains_key(instruction.gate_name) {
                 panic!(
-                    "No gate associated to \"{}\"", 
+                    "No gate associated to the name \"{}\"", 
                     instruction.gate_name,
                 );
             }
             if let Some(control) = instruction.control {
                 if control >= self.size {
                     panic!(
-                        "No gate associated to \"{}\"", 
-                        instruction.gate_name,
+                        "Control's address `{}` is out of the `{}` qbits register", 
+                        instruction.target,
+                        self.size,
                     );
                 }
             }
@@ -134,7 +155,7 @@ impl Computer {
         self.initialize.set_arg(1, program.initial_state).unwrap();
         unsafe { 
             self.initialize.enq()
-                .expect("Can't call `initialize` kernel")
+                .expect("Cannot call `initialize` kernel")
         }
 
         // Apply gates
@@ -158,11 +179,16 @@ impl Computer {
 
             unsafe { 
                 kernel.enq()
-                    .expect("Can't call `apply_gate` or `apply_gate_controlled` kernel") 
+                    .expect("Cannot call `apply_gate` or `apply_gate_controlled` kernel") 
             }
         }
 
-        // Measure
+        {
+            let mut vec = vec![c64::ZERO; self._amplitudes.len()];
+            self._amplitudes.read(&mut vec).enq().unwrap();
+            println!("{:?}", vec);
+        }
+
         vec![].into()
     }
 }
