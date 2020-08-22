@@ -5,4 +5,4 @@ authors = ["benjamin <benji.lef76@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-packed_simd = "0.3.3"
+ocl = "0.19.3"
