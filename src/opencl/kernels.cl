@@ -3,17 +3,7 @@ static size_t nth_cleared(
     uchar target
 ) {
     size_t mask = ((size_t) 1 << target) - 1;
-
     return (n & mask) | ((n & ~mask) << 1);
-}
-
-__kernel void initialize(
-    __global _Complex float *amplitudes, 
-    ulong initial_state
-) {
-    size_t const global_id = get_global_id(0);
-
-    amplitudes[global_id] = (global_id == initial_state) ? (float) 1 : (float) 0;
 }
 
 __kernel void apply_gate(
@@ -65,9 +55,27 @@ __kernel void apply_controlled_gate(
     }
 }
 
-/*__kernel void measure(
-    __global _Complex float *amplitudes,
+__kernel void calculate_probabilities(
+    const __global _Complex float *amplitudes,
+    __global float *probabilities
+) {
+    const size_t global_id = get_global_id(0);
 
+    union {
+        float2 f;
+        _Complex float c;
+    } v = {.c = amplitudes[global_id]};
+
+    v.f = v.f * v.f;
+
+    probabilities[global_id] = v.f.x + v.f.y;
+}
+
+__kernel void calculate_distribution(
+    const __global float *probabilities,
+    __global float *distribution,
+    const uchar size,
+    const uchar pass
 ) {
 
-}*/
+}

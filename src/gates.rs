@@ -1,16 +1,44 @@
-use crate::complex::c64;
-use crate::EPSILON;
+use crate::complex::{approx_eq, c64};
 
 pub struct Gate {
     pub(crate) coefficients: (c64, c64, c64, c64),
 }
 
 impl Gate {
-    pub const fn new(row0: [c64; 2], row1: [c64; 2]) -> Gate {
+    pub fn new<E1, E2, E3, E4>(u00: E1, u01: E2, u10: E3, u11: E4) -> Gate
+    where 
+        E1: Into<c64> + Copy,
+        E2: Into<c64> + Copy,
+        E3: Into<c64> + Copy,
+        E4: Into<c64> + Copy,
+    {
+        let gate = Gate::new_unchecked(u00, u01, u10, u11);
+
+        if !gate.is_unitary() {
+            panic!(
+                "The gate defined by the matrix\n\t[{:?}\t{:?}]\n\t[{:?}\t{:?}]\nis not unitary",
+                gate.coefficients.0,
+                gate.coefficients.1,
+                gate.coefficients.2,
+                gate.coefficients.3,
+            );
+        }
+
+        gate
+    }
+
+    #[inline]
+    pub fn new_unchecked<E1, E2, E3, E4>(u00: E1, u01: E2, u10: E3, u11: E4) -> Gate
+    where 
+        E1: Into<c64> + Copy,
+        E2: Into<c64> + Copy,
+        E3: Into<c64> + Copy,
+        E4: Into<c64> + Copy,
+    {
         Gate {
             coefficients: (
-                row0[0], row0[1], 
-                row1[0], row1[1],
+                u00.into(), u01.into(),
+                u10.into(), u11.into(),
             ),
         }
     }
@@ -18,12 +46,13 @@ impl Gate {
     // U = [a b]
     //     [c d]
     // UU* == 1
+    #[inline]
     pub(crate) fn is_unitary(&self) -> bool {
         let (a, b, c, d) = self.coefficients;
 
-        (a.norm_sqr() + c.norm_sqr() - 1f32).abs() < EPSILON &&
+        approx_eq(a.norm_sqr() + c.norm_sqr(), 1f32) &&
         (a*b.conjugate() + c*d.conjugate()).approx_eq(c64::ZERO) &&
-        (b.norm_sqr() + d.norm_sqr() - 1f32).abs() < EPSILON
+        approx_eq(b.norm_sqr() + d.norm_sqr(), 1f32)
     }
 }
 
@@ -34,23 +63,23 @@ mod tests {
     #[test]
     fn is_unitary() {
         let h = { 
-            let sqrt2inv = c64::real(2f32.sqrt().recip());
+            let sqrt2inv = 2f32.sqrt().recip();
             Gate::new(
-                [sqrt2inv, sqrt2inv], 
-                [sqrt2inv, -sqrt2inv],
+                sqrt2inv, sqrt2inv, 
+                sqrt2inv, -sqrt2inv,
             )
         };
         assert!(h.is_unitary());
 
         let x = Gate::new(
-            [c64::ZERO, c64::ONE],
-            [c64::ONE, c64::ZERO],
+            0.0, 1.0,
+            1.0, 0.0,
         );
         assert!(x.is_unitary());
 
         let y = Gate::new(
-            [c64::ZERO, -c64::I],
-            [c64::I, c64::ZERO],
+            0.0, -c64::I,
+            c64::I, 0.0,
         );
         assert!(y.is_unitary());
     }

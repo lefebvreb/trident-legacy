@@ -36,9 +36,9 @@ impl ComputerBuilder {
         self
     }
 
-    pub fn add_standard_gates(mut self) -> ComputerBuilder {
+    /*pub fn add_standard_gates(mut self) -> ComputerBuilder {
         unimplemented!()
-    }
+    }*/
 
     pub fn build(self) -> Computer {
         let size = self.size;
@@ -46,18 +46,19 @@ impl ComputerBuilder {
         let pro_que = ProQue::builder()
             .src(include_str!("opencl/kernels.cl"))
             .dims(1 << size)
-            .build().expect("Cannot build compute shader");
+            .build()
+            .expect("Cannot build compute shader");
 
         let amplitudes = pro_que.create_buffer::<c64>()
             .expect("Cannot create amplitudes buffer");
 
-        let gates = self.gates;
+        let probabilities = pro_que.create_buffer::<f32>()
+            .expect("Cannot create probabilities buffer");
 
-        let initialize = pro_que.kernel_builder("initialize")
-            .arg(&amplitudes)
-            .arg(0u64)
-            .build()
-            .expect("Cannot build `initialize` kernel");
+        let distribution = pro_que.create_buffer::<f32>()
+            .expect("Cannot create distribution buffer");
+
+        let gates = self.gates;
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
             .arg(&amplitudes)
@@ -67,7 +68,7 @@ impl ComputerBuilder {
             .arg(c64::ZERO)
             .arg(c64::ZERO)
             .build()
-            .expect("Cannot build `apply_gate` kernel");
+            .expect("Cannot build kernel `apply_gate`");
 
         let apply_controlled_gate = pro_que.kernel_builder("apply_controlled_gate")
             .arg(&amplitudes)
@@ -78,16 +79,32 @@ impl ComputerBuilder {
             .arg(c64::ZERO)
             .arg(0u8)
             .build()
-            .expect("Cannot build `apply_controlled_gate` kernel");
+            .expect("Cannot build kernel `apply_controlled_gate`");
 
+        let calculate_probabilities = pro_que.kernel_builder("calculate_probabilities")
+            .arg(&amplitudes)
+            .arg(&probabilities)
+            .build()
+            .expect("Cannot build kernel `calculate_probabilities`");
+
+        let calculate_distribution = pro_que.kernel_builder("calculate_distribution")
+            .arg(&probabilities)
+            .arg(&distribution)
+            .arg(size)
+            .arg(0u8)
+            .build()
+            .expect("Cannot build kernel `calculate_distribution`");
+            
         Computer {
             size,
-            _pro_que: pro_que,
-            _amplitudes: amplitudes,
+            amplitudes,
+            probabilities,
+            distribution,
             gates,
-            initialize,
             apply_gate,
             apply_controlled_gate,
+            calculate_probabilities,
+            calculate_distribution
         }
     }
 }
@@ -100,12 +117,15 @@ impl ComputerBuilder {
 
 pub struct Computer {
     size: Address,
-    _pro_que: ProQue,
-    _amplitudes: Buffer<c64>,
+    amplitudes: Buffer<c64>,
+    probabilities: Buffer<f32>,
+    distribution: Buffer<f32>,
     gates: HashMap<&'static str, Gate>,
-    initialize: Kernel,
+    //initialize: Kernel,
     apply_gate: Kernel,
     apply_controlled_gate: Kernel,
+    calculate_probabilities: Kernel,
+    calculate_distribution: Kernel,
 }
 
 impl Computer {
@@ -118,7 +138,7 @@ impl Computer {
 
     pub fn compile_and_run(&self, program: Program) -> Box<[u64]> {
         // Checks aka 'compilation'
-        if program.initial_state >= (1u64 << self.size) {
+        if program.initial_state >= (1usize << self.size) {
             panic!(
                 "Initial state `{}` can't be represented with a `{}` qbits register", 
                 program.initial_state, 
@@ -151,11 +171,18 @@ impl Computer {
             }
         }
 
-        // Initialization of register
-        self.initialize.set_arg(1, program.initial_state).unwrap();
-        unsafe { 
-            self.initialize.enq()
-                .expect("Cannot call `initialize` kernel")
+        // Initialization of amplitudes buffer
+        unsafe {
+            *self.amplitudes.map()
+                .write_invalidate()
+                .enq()
+                .expect("Cannot access the amplitudes buffer")
+                .get_mut(program.initial_state)
+                .expect(format!(
+                    "Cannot access element #{} in amplitudes buffer",
+                    program.initial_state,
+                ).as_str())
+            = c64::ONE;
         }
 
         // Apply gates
@@ -179,13 +206,27 @@ impl Computer {
 
             unsafe { 
                 kernel.enq()
-                    .expect("Cannot call `apply_gate` or `apply_gate_controlled` kernel") 
+                    .expect("Cannot call kernel `apply_gate` or `apply_gate_controlled`");
             }
         }
 
+        //Measuring
+        unsafe { 
+            self.calculate_probabilities.enq()
+                .expect("Cannot call kernel `calculate_probabilities`");
+        }
+
+        // Display amplitudes
         {
-            let mut vec = vec![c64::ZERO; self._amplitudes.len()];
-            self._amplitudes.read(&mut vec).enq().unwrap();
+            let mut vec = vec![c64::ZERO; self.amplitudes.len()];
+            self.amplitudes.read(&mut vec).enq().unwrap();
+            println!("{:?}", vec);
+        }
+
+        // Display probabilites
+        {
+            let mut vec = vec![0.0; self.probabilities.len()];
+            self.probabilities.read(&mut vec).enq().unwrap();
             println!("{:?}", vec);
         }
 

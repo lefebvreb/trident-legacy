@@ -19,7 +19,7 @@ pub(crate) struct Instruction {
 //#################################################################################################
 
 pub struct ProgramBuilder {
-    initial_state: u64,
+    initial_state: usize,
     instructions: Vec<Instruction>,
 }
 
@@ -72,13 +72,13 @@ impl ProgramBuilder {
 //#################################################################################################
 
 pub struct Program {
-    pub(crate) initial_state: u64,
+    pub(crate) initial_state: usize,
     pub(crate) instructions: Box<[Instruction]>,
     pub(crate) samples: u16,
 }
 
 impl Program {
-    pub fn new(initial_state: u64) -> ProgramBuilder {
+    pub fn new(initial_state: usize) -> ProgramBuilder {
         let instructions = Vec::new();
 
         ProgramBuilder {

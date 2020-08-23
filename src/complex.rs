@@ -1,6 +1,12 @@
 use std::fmt;
 
-use crate::EPSILON;
+const EPSILON: f32 = 1e-7f32;
+
+#[inline]
+pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
+    let diff = x - y;
+    diff < EPSILON && -diff < EPSILON
+}
 
 //#################################################################################################
 //
@@ -24,11 +30,6 @@ impl c64 {
     }
 
     #[inline]
-    pub const fn real(re: f32) -> c64 {
-        c64(re, 0.0)
-    }
-
-    #[inline]
     pub fn conjugate(self) -> c64 {
         c64(self.0, -self.1)
     }
@@ -40,7 +41,7 @@ impl c64 {
 
     #[inline]
     pub fn approx_eq(self, rhs: c64) -> bool {
-        (self.0 - rhs.0).abs() < EPSILON && (self.1 - rhs.1).abs() < EPSILON
+        approx_eq(self.0, rhs.0) && approx_eq(self.1, rhs.1)
     }
 }
 
@@ -48,9 +49,15 @@ unsafe impl ocl::traits::OclPrm for c64 {}
 
 //#################################################################################################
 //
-//                                    Debug format for c64
+//                                    Various implementations
 //
 //#################################################################################################
+
+impl From<f32> for c64 {
+    fn from(x: f32) -> c64 {
+        c64(x, 0.0)
+    }
+}
 
 impl fmt::Debug for c64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
