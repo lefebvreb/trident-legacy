@@ -30,6 +30,11 @@ impl c64 {
     }
 
     #[inline]
+    pub fn new_euler(r: f32, arg: f32) -> c64 {
+        c64(r * arg.cos(), r * arg.sin())
+    }
+
+    #[inline]
     pub fn conjugate(self) -> c64 {
         c64(self.0, -self.1)
     }

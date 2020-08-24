@@ -58,6 +58,8 @@ impl ComputerBuilder {
         let distribution = pro_que.create_buffer::<f32>()
             .expect("Cannot create distribution buffer");
 
+        let measures = pro_que.buffer_builder::<u64>()
+            .wor
         let gates = self.gates;
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
@@ -84,16 +86,15 @@ impl ComputerBuilder {
         let calculate_probabilities = pro_que.kernel_builder("calculate_probabilities")
             .arg(&amplitudes)
             .arg(&probabilities)
+            .arg(&distribution)
+            .global_work_size(1usize << (size - 1))
             .build()
             .expect("Cannot build kernel `calculate_probabilities`");
 
-        let calculate_distribution = pro_que.kernel_builder("calculate_distribution")
-            .arg(&probabilities)
+        let reduce_distribution = pro_que.kernel_builder("reduce_distribution")
             .arg(&distribution)
-            .arg(size)
-            .arg(0u8)
             .build()
-            .expect("Cannot build kernel `calculate_distribution`");
+            .expect("Cannot build kernel `reduce_distribution`");
             
         Computer {
             size,
@@ -104,7 +105,7 @@ impl ComputerBuilder {
             apply_gate,
             apply_controlled_gate,
             calculate_probabilities,
-            calculate_distribution
+            reduce_distribution
         }
     }
 }
@@ -120,36 +121,41 @@ pub struct Computer {
     amplitudes: Buffer<c64>,
     probabilities: Buffer<f32>,
     distribution: Buffer<f32>,
+    measures: Buffer<u64>,
     gates: HashMap<&'static str, Gate>,
-    //initialize: Kernel,
     apply_gate: Kernel,
     apply_controlled_gate: Kernel,
     calculate_probabilities: Kernel,
-    calculate_distribution: Kernel,
+    reduce_distribution: Kernel,
 }
 
 impl Computer {
     pub fn new(size: Address) -> ComputerBuilder {
+        if size == 0 {
+            panic!("Computer's register's size is 0, it should be at least 1")
+        }
+
         ComputerBuilder {
             size,
             gates: HashMap::new(),
         }
     }
 
-    pub fn compile_and_run(&self, program: Program) -> Box<[u64]> {
+    pub fn compile_and_run(&mut self, program: Program) -> Box<[u64]> {
         // Checks aka 'compilation'
         if program.initial_state >= (1usize << self.size) {
             panic!(
-                "Initial state `{}` can't be represented with a `{}` qbits register", 
+                "Initial state `{:b}` can't be represented with a {} sized register, it needs at least {} qbits", 
                 program.initial_state, 
                 self.size,
+                64 - program.initial_state.leading_zeros(),
             );
         }
 
         for instruction in program.instructions.iter() {
             if instruction.target >= self.size {
                 panic!(
-                    "Target's address `{}` is out of the `{}` qbits register", 
+                    "Target's address #{} is out of the {} sized register", 
                     instruction.target,
                     self.size,
                 );
@@ -163,7 +169,7 @@ impl Computer {
             if let Some(control) = instruction.control {
                 if control >= self.size {
                     panic!(
-                        "Control's address `{}` is out of the `{}` qbits register", 
+                        "Control's address #{} is out of the {} sized register", 
                         instruction.target,
                         self.size,
                     );
@@ -178,10 +184,7 @@ impl Computer {
                 .enq()
                 .expect("Cannot access the amplitudes buffer")
                 .get_mut(program.initial_state)
-                .expect(format!(
-                    "Cannot access element #{} in amplitudes buffer",
-                    program.initial_state,
-                ).as_str())
+                .expect("Cannot access element in amplitudes buffer")
             = c64::ONE;
         }
 
@@ -189,7 +192,7 @@ impl Computer {
         for instruction in program.instructions.iter() {
             let target = instruction.target;
             let gate = self.gates.get(instruction.gate_name).unwrap();
-            let kernel: &Kernel;
+            let kernel;
 
             if let Some(control) = instruction.control {
                 kernel = &self.apply_controlled_gate;
@@ -216,6 +219,24 @@ impl Computer {
                 .expect("Cannot call kernel `calculate_probabilities`");
         }
 
+        let mut worksize: usize = 1usize << (self.size - 1);
+        let mut offset = worksize;
+        while worksize > 2 {
+            worksize >>= 1;
+
+            self.reduce_distribution
+                .set_default_global_work_size(worksize.into())
+                .set_default_global_work_offset(offset.into());
+            
+            unsafe { 
+                self.reduce_distribution.enq()
+                    .expect("Cannot call kernel `reduce_distribution`");
+            }
+
+            offset += worksize;
+        }
+
+        /*
         // Display amplitudes
         {
             let mut vec = vec![c64::ZERO; self.amplitudes.len()];
@@ -229,7 +250,17 @@ impl Computer {
             self.probabilities.read(&mut vec).enq().unwrap();
             println!("{:?}", vec);
         }
+    
+        // Display distribution
+        {
+            let mut vec = vec![0.0; self.distribution.len()];
+            self.distribution.read(&mut vec).enq().unwrap();
+            println!("{:?}", vec);
+        }
+        */
 
-        vec![].into()
+        (0..program.samples).map(|_| {
+            0u64
+        }).collect()
     }
 }

@@ -1,5 +1,5 @@
 static size_t nth_cleared(
-    size_t n, 
+    size_t n,
     uchar target
 ) {
     size_t mask = ((size_t) 1 << target) - 1;
@@ -55,27 +55,42 @@ __kernel void apply_controlled_gate(
     }
 }
 
-__kernel void calculate_probabilities(
-    const __global _Complex float *amplitudes,
-    __global float *probabilities
+static float norm_sqr(
+    const _Complex float c
 ) {
-    const size_t global_id = get_global_id(0);
-
     union {
         float2 f;
         _Complex float c;
-    } v = {.c = amplitudes[global_id]};
+    } v = {.c = c};
 
-    v.f = v.f * v.f;
+    v.f *= v.f;
 
-    probabilities[global_id] = v.f.x + v.f.y;
+    return v.f.x + v.f.y;
 }
 
-__kernel void calculate_distribution(
-    const __global float *probabilities,
-    __global float *distribution,
-    const uchar size,
-    const uchar pass
+__kernel void calculate_probabilities(
+    const __global _Complex float *amplitudes,
+    __global float *probabilities,
+    __global float *distribution
 ) {
+    const size_t global_id = get_global_id(0);
+    const size_t id1 = global_id << 1;
+    const size_t id2 = id1 + 1;
 
+    const float probability1 = norm_sqr(amplitudes[id1]);
+    const float probability2 = norm_sqr(amplitudes[id2]);
+
+    probabilities[id1] = probability1;
+    probabilities[id2] = probability2;
+
+    distribution[global_id] = probability1 + probability2;
+}
+
+__kernel void reduce_distribution(
+    __global float *distribution
+) {
+    const size_t global_id = get_global_id(0);
+    const size_t id = ((global_id - get_global_size(0)) << 1) - get_global_offset(0);
+
+    distribution[global_id] = distribution[id] + distribution[id + 1];
 }
