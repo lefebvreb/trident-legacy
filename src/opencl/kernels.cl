@@ -14,9 +14,9 @@ __kernel void apply_gate(
     const _Complex float u10,
     const _Complex float u11
 ) {
-    const size_t gloabal_id = get_global_id(0);
+    const size_t global_id = get_global_id(0);
 
-    const size_t zero_state = nth_cleared(gloabal_id, target);
+    const size_t zero_state = nth_cleared(global_id, target);
     const size_t one_state  = zero_state | ((size_t) 1 << target);
 
     const _Complex float zero_amp = amplitudes[zero_state];
@@ -35,9 +35,9 @@ __kernel void apply_controlled_gate(
     const _Complex float u11,
     const uchar control
 ) {
-    const size_t gloabal_id = get_global_id(0);
+    const size_t global_id = get_global_id(0);
 
-    const size_t zero_state = nth_cleared(gloabal_id, target);
+    const size_t zero_state = nth_cleared(global_id, target);
     const size_t one_state  = zero_state | ((size_t) 1 << target);
 
     const bool control_var_zero = (((size_t) 1 << control) & zero_state) > 0;
@@ -93,4 +93,41 @@ __kernel void reduce_distribution(
     const size_t id = ((global_id - get_global_size(0)) << 1) - get_global_offset(0);
 
     distribution[global_id] = distribution[id] + distribution[id + 1];
+}
+
+__kernel void do_measurements(
+    const __global float *probabilities,
+    const __global float *distribution,
+    __global ulong *measurements,
+    const ulong size,
+    const uint seed
+) {
+    const size_t global_id = get_global_id(0);
+
+    uint k = seed * (global_id + 101);
+    k ^= k << 13;
+    k ^= k >> 17;
+    k ^= k << 5;
+
+    const float rand = (float) k * 2.3283064365386963e-10;
+
+    printf("rand = %f\n", rand);
+
+    size_t block = 1;
+    size_t id = size - 4;
+    while (block != (size >> 2)) {
+        block <<= 1;
+
+        printf("id = %d\n", id);
+
+        if (distribution[id] < rand) {
+            id -= block;
+        } else {
+            id -= block << 1;
+        }
+    }
+
+    printf("id = %d\n", id * 2 * (distribution[id] < rand));
+
+    measurements[global_id] = id * 2 * (distribution[id] < rand);
 }

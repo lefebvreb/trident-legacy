@@ -1,6 +1,7 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 use crate::complex::c64;
 use crate::gates::Gate;
@@ -42,24 +43,28 @@ impl ComputerBuilder {
 
     pub fn build(self) -> Computer {
         let size = self.size;
+        let dim = 1usize << size;
 
         let pro_que = ProQue::builder()
             .src(include_str!("opencl/kernels.cl"))
-            .dims(1 << size)
+            .dims(dim)
             .build()
             .expect("Cannot build compute shader");
 
-        let amplitudes = pro_que.create_buffer::<c64>()
+        let amplitudes = pro_que.create_buffer()
             .expect("Cannot create amplitudes buffer");
 
-        let probabilities = pro_que.create_buffer::<f32>()
+        let probabilities = pro_que.create_buffer()
             .expect("Cannot create probabilities buffer");
 
-        let distribution = pro_que.create_buffer::<f32>()
+        let distribution = pro_que.create_buffer()
             .expect("Cannot create distribution buffer");
 
-        let measures = pro_que.buffer_builder::<u64>()
-            .wor
+        let measurements = pro_que.buffer_builder()
+            .len(1024usize)
+            .build()
+            .expect("Cannot create measurements buffer");
+
         let gates = self.gates;
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
@@ -87,7 +92,7 @@ impl ComputerBuilder {
             .arg(&amplitudes)
             .arg(&probabilities)
             .arg(&distribution)
-            .global_work_size(1usize << (size - 1))
+            .global_work_size(dim >> 1)
             .build()
             .expect("Cannot build kernel `calculate_probabilities`");
 
@@ -95,17 +100,29 @@ impl ComputerBuilder {
             .arg(&distribution)
             .build()
             .expect("Cannot build kernel `reduce_distribution`");
+
+        let do_measurements = pro_que.kernel_builder("do_measurements")
+            .arg(&probabilities)
+            .arg(&distribution)
+            .arg(&measurements)
+            .arg(dim as u64)
+            .arg(0u32)
+            .global_work_size(Computer::MEASUREMENTS_BLOCK)
+            .build()
+            .expect("Cannot build kernel `do_measurements`");
             
         Computer {
             size,
+            gates,
             amplitudes,
             probabilities,
             distribution,
-            gates,
+            measurements,
             apply_gate,
             apply_controlled_gate,
             calculate_probabilities,
-            reduce_distribution
+            reduce_distribution,
+            do_measurements,
         }
     }
 }
@@ -118,18 +135,21 @@ impl ComputerBuilder {
 
 pub struct Computer {
     size: Address,
+    gates: HashMap<&'static str, Gate>,
     amplitudes: Buffer<c64>,
     probabilities: Buffer<f32>,
     distribution: Buffer<f32>,
-    measures: Buffer<u64>,
-    gates: HashMap<&'static str, Gate>,
+    measurements: Buffer<u64>,
     apply_gate: Kernel,
     apply_controlled_gate: Kernel,
     calculate_probabilities: Kernel,
     reduce_distribution: Kernel,
+    do_measurements: Kernel,
 }
 
 impl Computer {
+    const MEASUREMENTS_BLOCK: usize = 1;
+
     pub fn new(size: Address) -> ComputerBuilder {
         if size == 0 {
             panic!("Computer's register's size is 0, it should be at least 1")
@@ -213,54 +233,84 @@ impl Computer {
             }
         }
 
-        //Measuring
+        // Calculate the probabilities vector
         unsafe { 
             self.calculate_probabilities.enq()
                 .expect("Cannot call kernel `calculate_probabilities`");
         }
 
-        let mut worksize: usize = 1usize << (self.size - 1);
-        let mut offset = worksize;
-        while worksize > 2 {
-            worksize >>= 1;
-
-            self.reduce_distribution
-                .set_default_global_work_size(worksize.into())
-                .set_default_global_work_offset(offset.into());
-            
-            unsafe { 
-                self.reduce_distribution.enq()
-                    .expect("Cannot call kernel `reduce_distribution`");
-            }
-
-            offset += worksize;
-        }
-
-        /*
-        // Display amplitudes
+        // Reduce the probabilities to the distribution vector
         {
-            let mut vec = vec![c64::ZERO; self.amplitudes.len()];
-            self.amplitudes.read(&mut vec).enq().unwrap();
-            println!("{:?}", vec);
+            let mut worksize: usize = 1usize << (self.size - 1);
+            let mut offset = worksize;
+            while worksize > 2 {
+                worksize >>= 1;
+    
+                self.reduce_distribution
+                    .set_default_global_work_size(worksize.into())
+                    .set_default_global_work_offset(offset.into());
+                
+                unsafe { 
+                    self.reduce_distribution.enq()
+                        .expect("Cannot call kernel `reduce_distribution`");
+                }
+    
+                offset += worksize;
+            }
         }
 
         // Display probabilites
         {
             let mut vec = vec![0.0; self.probabilities.len()];
             self.probabilities.read(&mut vec).enq().unwrap();
-            println!("{:?}", vec);
+            println!("P = {:?}", vec);
         }
     
         // Display distribution
         {
             let mut vec = vec![0.0; self.distribution.len()];
             self.distribution.read(&mut vec).enq().unwrap();
-            println!("{:?}", vec);
+            println!("D = {:?}", vec);
         }
-        */
 
-        (0..program.samples).map(|_| {
-            0u64
-        }).collect()
+        {
+            let mut seed = (SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("Duration since UNIX_EPOCH failed")
+                .as_secs()
+                & 0xFFFFFFFF) as u32;
+
+            let mut results = Vec::with_capacity(program.samples);
+            let mut buffer = vec![0u64; Computer::MEASUREMENTS_BLOCK];
+            let mut remaining = program.samples;
+            let mut measures;
+
+            while remaining != 0 {
+                measures = std::cmp::min(remaining, Computer::MEASUREMENTS_BLOCK);
+                remaining -= measures;
+
+                seed ^= seed.wrapping_shl(13);
+                seed ^= seed.wrapping_shr(17);
+                seed ^= seed.wrapping_shl(5);
+
+                self.do_measurements.set_arg(4, seed).unwrap();
+
+                unsafe {
+                    self.do_measurements.enq()
+                        .expect("Cannot call kernel `do_measurements`");
+                }
+
+                self.measurements.read(&mut buffer)
+                    .enq()
+                    .expect("Cannot read from buffer `measurements`");
+
+                for _ in 0..measures {
+                    results.push(buffer.pop().unwrap());
+                }
+            }
+
+            println!();
+            results.into()
+        }
     }
 }

@@ -46,9 +46,9 @@ impl ProgramBuilder {
         self
     }
 
-    pub fn measure(self, samples: u16) -> Program {
+    pub fn measure(self, samples: usize) -> Program {
         if samples == 0 {
-            panic!("Samples count cannot be null")
+            panic!("Samples count cannot be 0")
         }
 
         let initial_state = self.initial_state;
@@ -74,7 +74,7 @@ impl ProgramBuilder {
 pub struct Program {
     pub(crate) initial_state: usize,
     pub(crate) instructions: Box<[Instruction]>,
-    pub(crate) samples: u16,
+    pub(crate) samples: usize,
 }
 
 impl Program {

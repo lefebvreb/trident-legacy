@@ -13,17 +13,19 @@ fn main() {
         )
     };
 
-    let mut computer = Computer::new(4)
+    let mut computer = Computer::new(3)
         .add_gate("H", hadamard_gate)
         .build();
 
-    let program = Program::new(0b0000)
+    let program = Program::new(0b000)
         .apply(0, "H")
         .apply(1, "H")
         .apply(2, "H")
-        .measure(10);
+        .measure(1);
 
     let result = computer.compile_and_run(program);
-    
-    println!("{:?}", result);
+
+    for r in result.iter() {
+        println!("|{:03b}>", *r);
+    }
 }
