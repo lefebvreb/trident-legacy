@@ -1,4 +1,4 @@
-static size_t nth_cleared(
+inline static size_t nth_cleared(
     size_t n,
     uchar target
 ) {
@@ -6,8 +6,8 @@ static size_t nth_cleared(
     return (n & mask) | ((n & ~mask) << 1);
 }
 
-__kernel void apply_gate(
-    __global _Complex float *amplitudes,
+kernel void apply_gate(
+    global _Complex float *amplitudes,
     const uchar target,
     const _Complex float u00,
     const _Complex float u01,
@@ -26,8 +26,8 @@ __kernel void apply_gate(
     amplitudes[one_state]  = u10*zero_amp + u11*one_amp;
 }
 
-__kernel void apply_controlled_gate(
-    __global _Complex float *amplitudes,
+kernel void apply_controlled_gate(
+    global _Complex float *amplitudes,
     const uchar target,
     const _Complex float u00,
     const _Complex float u01,
@@ -55,79 +55,83 @@ __kernel void apply_controlled_gate(
     }
 }
 
-static float norm_sqr(
-    const _Complex float c
+kernel void calculate_probabilities(
+    global _Complex float *buffer
 ) {
+    const size_t global_id = get_global_id(0);
+
     union {
-        float2 f;
-        _Complex float c;
-    } v = {.c = c};
+    _Complex float c;
+    float2 f;
+    } v = {.c = buffer[global_id]};
 
     v.f *= v.f;
-
-    return v.f.x + v.f.y;
+    v.f.x = v.f.x + v.f.y;
+    
+    buffer[global_id] = v.c;
 }
 
-__kernel void calculate_probabilities(
-    const __global _Complex float *amplitudes,
-    __global float *probabilities,
-    __global float *distribution
+inline size_t index(
+    size_t n,
+    size_t i
+) {
+    return (1 << n) * (1 + (i << 1)) - 1;
+}
+
+// Pass in [1, size)
+kernel void reduce_distribution(
+    global float *distribution,
+    const uchar pass
 ) {
     const size_t global_id = get_global_id(0);
-    const size_t id1 = global_id << 1;
-    const size_t id2 = id1 + 1;
 
-    const float probability1 = norm_sqr(amplitudes[id1]);
-    const float probability2 = norm_sqr(amplitudes[id2]);
+    const size_t id0 = index(pass-1, global_id << 1);
+    const size_t id1 = index(pass-1, (global_id << 1) + 1);
+    const size_t id  = index(pass, global_id);
 
-    probabilities[id1] = probability1;
-    probabilities[id2] = probability2;
-
-    distribution[global_id] = probability1 + probability2;
+    distribution[id] = distribution[id0] + distribution[id1];
 }
 
-__kernel void reduce_distribution(
-    __global float *distribution
+// Modified 32-bit xorshift algorithm. Supposed to give uniform floats in the range [0-1]
+inline float random(
+    const uint seed,
+    const uint global_id
 ) {
-    const size_t global_id = get_global_id(0);
-    const size_t id = ((global_id - get_global_size(0)) << 1) - get_global_offset(0);
+    uint x = (seed * (global_id + 19)) ^ 0xFFFFFFFF;
 
-    distribution[global_id] = distribution[id] + distribution[id + 1];
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+
+    return (float) ((double) x * 2.3283064370807974e-10);
 }
 
-__kernel void do_measurements(
-    const __global float *probabilities,
-    const __global float *distribution,
-    __global ulong *measurements,
-    const ulong size,
+kernel void do_measurements(
+    const global float *distribution,
+    global ulong *measurements,
+    uchar size,
     const uint seed
 ) {
     const size_t global_id = get_global_id(0);
+    const float value = random(seed, global_id);
 
-    uint k = seed * (global_id + 101);
-    k ^= k << 13;
-    k ^= k >> 17;
-    k ^= k << 5;
+    size_t state = 0;
+    float sum = 0.0;
 
-    const float rand = (float) k * 2.3283064365386963e-10;
+    for (size--; size; size--) {
+        const float distrib = distribution[index(size, state)];
 
-    printf("rand = %f\n", rand);
-
-    size_t block = 1;
-    size_t id = size - 4;
-    while (block != (size >> 2)) {
-        block <<= 1;
-
-        printf("id = %d\n", id);
-
-        if (distribution[id] < rand) {
-            id -= block;
-        } else {
-            id -= block << 1;
+        if (value > sum + distrib) {
+            sum += distrib;
+            state++;
         }
+
+        state <<= 1;
     }
 
-    printf("id = %d\n", id * 2 * (distribution[id] < rand));
+    if (value > sum + distribution[state << 1]) {
+        state++;
+    }
 
-    measurements[global_id] = id * 2 * (distribution[id] < rand);
+    measurements[global_id] = (ulong) state;
 }

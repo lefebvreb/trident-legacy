@@ -1,6 +1,4 @@
-use quantum::computer::Computer;
-use quantum::program::Program;
-use quantum::gates::Gate;
+use qrust::{Computer, Gate, Program};
 
 // cargo run --example test --release
 
@@ -13,7 +11,7 @@ fn main() {
         )
     };
 
-    let mut computer = Computer::new(3)
+    let mut computer = Computer::new(4)
         .add_gate("H", hadamard_gate)
         .build();
 
@@ -21,11 +19,12 @@ fn main() {
         .apply(0, "H")
         .apply(1, "H")
         .apply(2, "H")
-        .measure(1);
+        .apply(3, "H")
+        .measure(16);
 
-    let result = computer.compile_and_run(program);
+    let result = computer.compile_and_run(program, None);
 
     for r in result.iter() {
-        println!("|{:03b}>", *r);
+        println!("|{:04b}>", *r);
     }
 }

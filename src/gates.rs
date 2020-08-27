@@ -1,4 +1,6 @@
-use crate::complex::{approx_eq, c64};
+use crate::complex::c64;
+
+use crate::approx_eq;
 
 pub struct Gate {
     pub(crate) coefficients: (c64, c64, c64, c64),

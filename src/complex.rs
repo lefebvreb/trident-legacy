@@ -1,12 +1,6 @@
 use std::fmt;
 
-const EPSILON: f32 = 1e-7f32;
-
-#[inline]
-pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
-    let diff = x - y;
-    diff < EPSILON && -diff < EPSILON
-}
+use crate::approx_eq;
 
 //#################################################################################################
 //
@@ -42,6 +36,11 @@ impl c64 {
     #[inline]
     pub fn norm_sqr(self) -> f32 {
         self.0*self.0 + self.1*self.1
+    }
+
+    #[inline]
+    pub fn norm(self) -> f32 {
+        self.norm_sqr().sqrt()
     }
 
     #[inline]
@@ -107,6 +106,19 @@ impl std::ops::Mul<c64> for c64 {
         c64(
             self.0*rhs.0 - self.1*rhs.1,
             self.0*rhs.1 + self.1*rhs.0,
+        )
+    }
+}
+
+impl std::ops::Div<c64> for c64 {
+    type Output = c64;
+
+    fn div(self, rhs: c64) -> c64 {
+        let d = rhs.norm_sqr().recip();
+
+        c64(
+            (self.0*rhs.0 + self.1*rhs.1) * d,
+            (self.1*rhs.0 - self.0*rhs.1) * d,
         )
     }
 }
