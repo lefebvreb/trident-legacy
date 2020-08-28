@@ -12,7 +12,7 @@ static inline float2 complex_mul(
     return lhs.xx * rhs + lhs.yy * (float2) (-rhs.y, rhs.x);
 }
 
-// Helper function for the apply_gate* kernels
+// Helper function for the apply_gate kernels
 static inline size_t nth_cleared(
     size_t n,
     uchar target
@@ -30,16 +30,65 @@ static inline size_t index(
     return (1 << pass) * (1 + (id << 1)) - 1;
 }
 
-// Returns a prng float in the range [0,1] given a seed and the global id
-static inline float random(
-    const uint seed,
-    const uint global_id
-) {
-    uint x = ~(seed * (global_id + 19));
+//#################################################################################################
+//
+//                                          MWC64X prng
+// 
+//#################################################################################################
 
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
+// Returns (a+b) % m if a < m && b < m
+static inline ulong modular_add64(ulong a, ulong b, ulong m) {
+    ulong res = a + b;
+
+    if ((res >= m) || (res < a)) {
+        res -= m;
+    }
+
+    return res;
+}
+
+// Returns (a*b) % m if a < m && b < m
+static inline ulong modular_mul64(ulong a, ulong b, ulong m) {
+    ulong res = 0;
+
+    while (a) {
+        if (a & 1) {
+            res = modular_add64(res, b, m);
+        }
+        b = modular_add64(b, b, m);
+        a >>= 1;
+    }
+
+    return res;
+}
+
+// Returns (a**e) % m if a < m && e < m
+static inline ulong modular_pow64(ulong a, ulong e, ulong m) {
+    ulong sqr = a, acc = 1;
+
+    while (e) {
+        if (e & 1) {
+            acc = modular_add64(acc, sqr, m);
+        }
+        sqr = modular_add64(sqr, sqr, m);
+        e >>= 1;
+    }
+
+    return acc;
+}
+
+// Returns a random float from [0,1] based off the state and the global_id (distance)
+static inline float random(
+    const uint2 state,
+    const uint distance
+) {
+    const ulong A = 4294883355;
+    const ulong M = 18446383549859758079;
+
+    const ulong m = modular_pow64(A, distance, M);
+    ulong x = (ulong) state.x * A + (ulong) state.y;
+    x = modular_mul64(x, m, M);
+    x = (x / A) ^ (x % A);
 
     return (float) ((double) x * 2.3283064370807974e-10);
 }
@@ -50,7 +99,7 @@ static inline float random(
 // 
 //#################################################################################################
 
-// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the amplitudes buffer
+// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the buffer
 kernel void apply_gate(
     global float2 *buffer,
     const uchar target,
@@ -71,7 +120,7 @@ kernel void apply_gate(
     buffer[one_state]  = complex_mul(u10, zero_amp) + complex_mul(u11, one_amp);
 }
 
-// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the amplitudes buffer
+// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the buffer
 // with qbit #control as control 
 kernel void apply_controlled_gate(
     global float2 *buffer,
@@ -133,10 +182,10 @@ kernel void do_measurements(
     global const float *buffer,
     global ulong *mesures,
     uchar size,
-    const uint seed
+    const uint2 state
 ) {
     const size_t global_id = get_global_id(0);
-    const float rand = random(seed, global_id);
+    const float rand = random(state, global_id);
 
     size_t id = 0;
     float sum = 0.0;

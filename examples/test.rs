@@ -1,4 +1,4 @@
-use qrust::{Computer, Gate, Program};
+use trident::{Computer, Gate, Program};
 
 // cargo run --example test --release
 
@@ -11,17 +11,17 @@ fn main() {
         )
     };
 
-    let mut computer = Computer::new(3)
+    let mut computer = Computer::new(10)
         .add_gate("H", hadamard_gate)
         .build();
 
-    let program = Program::new(0b000)
-        .apply_range(0..3, "H", None)
-        .measure(4096);
+    let program = Program::new(&computer, "|0000000000>")
+        .apply_range(0..10, "H", None)
+        .measure(1024);
 
     let mut result = computer.compile_and_run(program, None);
 
-    result.format_options(0.0, Some(3));
+    result.format_options(None, 0);
 
     println!("{}", result);
 }

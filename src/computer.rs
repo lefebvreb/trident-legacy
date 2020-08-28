@@ -1,12 +1,13 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use crate::complex::c64;
 use crate::gates::Gate;
 use crate::measure::Measurements;
 use crate::program::Program;
+use crate::random::MWC64X;
 
 pub type Address = u8;
 
@@ -100,7 +101,7 @@ impl ComputerBuilder {
             .arg(&main_buffer)
             .arg(&measurements_buffer)
             .arg(size)
-            .arg(0u32)
+            .arg(0u64)
             .global_work_size(Computer::MEASUREMENTS_BLOCK)
             .build()
             .expect("Cannot build kernel `do_measurements`");
@@ -127,8 +128,8 @@ impl ComputerBuilder {
 
 #[derive(Debug)]
 pub struct Computer {
-    size: Address,
-    gates: HashMap<&'static str, Gate>,
+    pub(crate) size: Address,
+    pub(crate) gates: HashMap<&'static str, Gate>,
     main_buffer: Buffer<c64>,
     measurements_buffer: Buffer<u64>,
     apply_gate: Kernel,
@@ -138,12 +139,21 @@ pub struct Computer {
     do_measurements: Kernel,
 }
 
-impl Computer {
+impl<'computer> Computer {
     const MEASUREMENTS_BLOCK: usize = 1024;
 
     pub fn new(size: Address) -> ComputerBuilder {
         if size == 0 {
-            panic!("Computer's register's size is 0, it should be at least 1")
+            panic!("Computer's register's size is 0, it should be at least 1");
+        }
+        let ptr_size = 8 * std::mem::size_of::<usize>();
+        if size as usize > ptr_size {
+            panic!(
+                "Computer's register's size is {}, but the device's address size are only {} bits: it needs at least {} bit(s) more",
+                size,
+                ptr_size,
+                size as usize - ptr_size,
+            );
         }
 
         ComputerBuilder {
@@ -152,44 +162,8 @@ impl Computer {
         }
     }
 
-    pub fn compile_and_run(&mut self, program: Program, seed: Option<u32>) -> Measurements {
+    pub fn compile_and_run(&mut self, program: Program, seed: Option<u64>) -> Measurements {
         let start = Instant::now();
-        let dim = 1 << self.size;
-
-        // Checks aka 'compilation'
-        if program.initial_state >= (dim) {
-            panic!(
-                "Initial state `|{:b}>` can't be represented with a {}-sized register, it needs at least {} qbits", 
-                program.initial_state, 
-                self.size,
-                64 - program.initial_state.leading_zeros(),
-            );
-        }
-
-        for instruction in program.instructions.iter() {
-            if instruction.target >= self.size {
-                panic!(
-                    "Target's address (#{}) is out of the {}-sized register", 
-                    instruction.target,
-                    self.size,
-                );
-            } 
-            if !self.gates.contains_key(instruction.gate_name) {
-                panic!(
-                    "No gate associated to the name \"{}\"", 
-                    instruction.gate_name,
-                );
-            }
-            if let Some(control) = instruction.control {
-                if control >= self.size {
-                    panic!(
-                        "Control's address (#{}) is out of the {}-sized register", 
-                        instruction.target,
-                        self.size,
-                    );
-                }
-            }
-        }
 
         // Initialization of amplitudes buffer
         unsafe {
@@ -235,7 +209,7 @@ impl Computer {
 
         // Reduce probabilities
         {
-            let mut worksize = dim >> 1;
+            let mut worksize: usize = 1 << (self.size - 1);
 
             for pass in 1..self.size {
                 self.reduce_distribution.set_default_global_work_size(worksize.into());
@@ -258,15 +232,7 @@ impl Computer {
         }*/
 
         {
-            let mut seed = match seed {
-                Some(s) => s,
-                None => !(SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Duration since UNIX_EPOCH failed")
-                    .as_secs()
-                    & 0xFFFFFFFF
-                ) as u32,
-            };
+            let mut prng = MWC64X::new(seed);
 
             let mut buffer = vec![0; Computer::MEASUREMENTS_BLOCK];
             let mut results = HashMap::with_capacity(program.samples);
@@ -276,11 +242,8 @@ impl Computer {
                 let measures = std::cmp::min(remaining, Computer::MEASUREMENTS_BLOCK);
                 remaining -= measures;
 
-                seed ^= seed.wrapping_shl(13);
-                seed ^= seed.wrapping_shr(17);
-                seed ^= seed.wrapping_shl(5);
-
-                self.do_measurements.set_arg(3, seed).unwrap();
+                prng.skip(Computer::MEASUREMENTS_BLOCK as u64);
+                self.do_measurements.set_arg(3, prng.state()).unwrap();
 
                 unsafe {
                     self.do_measurements.enq()
@@ -291,13 +254,11 @@ impl Computer {
                     .enq()
                     .expect("Cannot read from buffer `measurements`");
 
-                for i in 0..measures {
-                    let state = buffer[i];
-
-                    if let Some(freq) = results.get_mut(&state) {
+                for state in buffer.iter().take(measures) {
+                    if let Some(freq) = results.get_mut(state) {
                         *freq += 1;
                     } else {
-                        results.insert(state, 1);
+                        results.insert(*state, 1);
                     }
                 }
             }

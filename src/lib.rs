@@ -1,10 +1,10 @@
 // TODO
 
-// Make Program creation bouded to computer and check validity here
 // Comment code
-// Various optimizations
+// Various optimizations ?
 // Add standard gates
-// Pretty print computer, program...
+// Impl Display for computer, program...
+// State type
 // Tests
 // Examples
 // Doc
@@ -21,6 +21,7 @@ mod computer;
 mod gates;
 mod measure;
 mod program;
+mod random;
 
 // Returns true if x and y are equals with EPSILON precision
 #[inline]
