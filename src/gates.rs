@@ -2,6 +2,7 @@ use crate::complex::c64;
 
 use crate::approx_eq;
 
+#[derive(Debug)]
 pub struct Gate {
     pub(crate) coefficients: (c64, c64, c64, c64),
 }
@@ -14,7 +15,7 @@ impl Gate {
         E3: Into<c64> + Copy,
         E4: Into<c64> + Copy,
     {
-        let gate = Gate::new_unchecked(u00, u01, u10, u11);
+        let gate = unsafe { Gate::new_unchecked(u00, u01, u10, u11) };
 
         if !gate.is_unitary() {
             panic!(
@@ -30,7 +31,7 @@ impl Gate {
     }
 
     #[inline]
-    pub fn new_unchecked<E1, E2, E3, E4>(u00: E1, u01: E2, u10: E3, u11: E4) -> Gate
+    pub unsafe fn new_unchecked<E1, E2, E3, E4>(u00: E1, u01: E2, u10: E3, u11: E4) -> Gate
     where 
         E1: Into<c64> + Copy,
         E2: Into<c64> + Copy,
@@ -45,9 +46,6 @@ impl Gate {
         }
     }
 
-    // U = [a b]
-    //     [c d]
-    // UU* == 1
     #[inline]
     pub(crate) fn is_unitary(&self) -> bool {
         let (a, b, c, d) = self.coefficients;

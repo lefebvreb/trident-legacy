@@ -1,10 +1,11 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use crate::complex::c64;
 use crate::gates::Gate;
+use crate::measure::Measurements;
 use crate::program::Program;
 
 pub type Address = u8;
@@ -15,6 +16,7 @@ pub type Address = u8;
 //
 //#################################################################################################
 
+#[derive(Debug)]
 pub struct ComputerBuilder {
     size: Address,
     gates: HashMap<&'static str, Gate>,
@@ -123,6 +125,7 @@ impl ComputerBuilder {
 //
 //#################################################################################################
 
+#[derive(Debug)]
 pub struct Computer {
     size: Address,
     gates: HashMap<&'static str, Gate>,
@@ -149,13 +152,14 @@ impl Computer {
         }
     }
 
-    pub fn compile_and_run(&mut self, program: Program, seed: Option<u32>) -> Box<[u64]> {
+    pub fn compile_and_run(&mut self, program: Program, seed: Option<u32>) -> Measurements {
+        let start = Instant::now();
         let dim = 1 << self.size;
 
         // Checks aka 'compilation'
         if program.initial_state >= (dim) {
             panic!(
-                "Initial state `{:b}` can't be represented with a {} sized register, it needs at least {} qbits", 
+                "Initial state `|{:b}>` can't be represented with a {}-sized register, it needs at least {} qbits", 
                 program.initial_state, 
                 self.size,
                 64 - program.initial_state.leading_zeros(),
@@ -247,25 +251,25 @@ impl Computer {
         }
 
         // Display probabilites
-        {
+        /*{
             let mut vec = vec![c64::ZERO; self.main_buffer.len()];
             self.main_buffer.read(&mut vec).enq().unwrap();
             println!("P = {:?}", vec);
-        }
+        }*/
 
         {
             let mut seed = match seed {
                 Some(s) => s,
-                None => (SystemTime::now()
+                None => !(SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Duration since UNIX_EPOCH failed")
                     .as_secs()
                     & 0xFFFFFFFF
                 ) as u32,
-            };                
+            };
 
             let mut buffer = vec![0; Computer::MEASUREMENTS_BLOCK];
-            let mut results = Vec::with_capacity(program.samples);
+            let mut results = HashMap::with_capacity(program.samples);
             let mut remaining = program.samples;
 
             while remaining != 0 {
@@ -288,11 +292,22 @@ impl Computer {
                     .expect("Cannot read from buffer `measurements`");
 
                 for i in 0..measures {
-                    results.push(buffer[i]);
+                    let state = buffer[i];
+
+                    if let Some(freq) = results.get_mut(&state) {
+                        *freq += 1;
+                    } else {
+                        results.insert(state, 1);
+                    }
                 }
             }
 
-            results.into()
+            Measurements::new(
+                Instant::now().duration_since(start),
+                self.size,
+                program.samples,
+                results,
+            )
         }
     }
 }

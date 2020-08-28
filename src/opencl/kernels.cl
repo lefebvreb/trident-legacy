@@ -1,4 +1,19 @@
-inline static size_t nth_cleared(
+//#################################################################################################
+//
+//                                       Helper functions
+// 
+//#################################################################################################
+
+// Multiply two float2 together as if they were complex numbers
+static inline float2 complex_mul(
+    const float2 lhs,
+    const float2 rhs
+) {
+    return lhs.xx * rhs + lhs.yy * (float2) (-rhs.y, rhs.x);
+}
+
+// Helper function for the apply_gate* kernels
+static inline size_t nth_cleared(
     size_t n,
     uchar target
 ) {
@@ -6,33 +21,65 @@ inline static size_t nth_cleared(
     return (n & mask) | ((n & ~mask) << 1);
 }
 
+// Returns the proper index corresponding to the #id element at the #pass level of the
+// distribution vector
+static inline size_t index(
+    size_t pass,
+    size_t id
+) {
+    return (1 << pass) * (1 + (id << 1)) - 1;
+}
+
+// Returns a prng float in the range [0,1] given a seed and the global id
+static inline float random(
+    const uint seed,
+    const uint global_id
+) {
+    uint x = ~(seed * (global_id + 19));
+
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+
+    return (float) ((double) x * 2.3283064370807974e-10);
+}
+
+//#################################################################################################
+//
+//                                             Kernels
+// 
+//#################################################################################################
+
+// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the amplitudes buffer
 kernel void apply_gate(
-    global _Complex float *amplitudes,
+    global float2 *buffer,
     const uchar target,
-    const _Complex float u00,
-    const _Complex float u01,
-    const _Complex float u10,
-    const _Complex float u11
+    const float2 u00,
+    const float2 u01,
+    const float2 u10,
+    const float2 u11
 ) {
     const size_t global_id = get_global_id(0);
 
     const size_t zero_state = nth_cleared(global_id, target);
     const size_t one_state  = zero_state | ((size_t) 1 << target);
 
-    const _Complex float zero_amp = amplitudes[zero_state];
-    const _Complex float one_amp  = amplitudes[one_state];
+    const float2 zero_amp = buffer[zero_state];
+    const float2 one_amp  = buffer[one_state];
 
-    amplitudes[zero_state] = u00*zero_amp + u01*one_amp;
-    amplitudes[one_state]  = u10*zero_amp + u11*one_amp;
+    buffer[zero_state] = complex_mul(u00, zero_amp) + complex_mul(u01, one_amp);
+    buffer[one_state]  = complex_mul(u10, zero_amp) + complex_mul(u11, one_amp);
 }
 
+// Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the amplitudes buffer
+// with qbit #control as control 
 kernel void apply_controlled_gate(
-    global _Complex float *amplitudes,
+    global float2 *buffer,
     const uchar target,
-    const _Complex float u00,
-    const _Complex float u01,
-    const _Complex float u10,
-    const _Complex float u11,
+    const float2 u00,
+    const float2 u01,
+    const float2 u10,
+    const float2 u11,
     const uchar control
 ) {
     const size_t global_id = get_global_id(0);
@@ -43,44 +90,33 @@ kernel void apply_controlled_gate(
     const bool control_var_zero = (((size_t) 1 << control) & zero_state) > 0;
     const bool control_var_one  = (((size_t) 1 << control) & one_state) > 0;
 
-    const _Complex float zero_amp = amplitudes[zero_state];
-    const _Complex float one_amp  = amplitudes[one_state];   
+    const float2 zero_amp = buffer[zero_state];
+    const float2 one_amp  = buffer[one_state];   
 
     if (control_var_zero) {
-        amplitudes[zero_state] = u00*zero_amp + u01*one_amp;
+        buffer[zero_state] = complex_mul(u00, zero_amp) + complex_mul(u01, one_amp);
     }
 
     if (control_var_one) {     
-        amplitudes[one_state]  = u10*zero_amp + u11*one_amp;
+        buffer[one_state]  = complex_mul(u10, zero_amp) + complex_mul(u11, one_amp);
     }
 }
 
+// Calculate the probabilites by calculating the squared norm of all complex numbers in the buffer
+// and storing the results in their real parts
 kernel void calculate_probabilities(
-    global _Complex float *buffer
+    global float2 *buffer
 ) {
     const size_t global_id = get_global_id(0);
 
-    union {
-    _Complex float c;
-    float2 f;
-    } v = {.c = buffer[global_id]};
-
-    v.f *= v.f;
-    v.f.x = v.f.x + v.f.y;
-    
-    buffer[global_id] = v.c;
+    float2 value = buffer[global_id];
+    value *= value;    
+    buffer[global_id].x = value.x + value.y;
 }
 
-inline size_t index(
-    size_t n,
-    size_t i
-) {
-    return (1 << n) * (1 + (i << 1)) - 1;
-}
-
-// Pass in [1, size)
+// Reduce the distribution vector
 kernel void reduce_distribution(
-    global float *distribution,
+    global float *buffer,
     const uchar pass
 ) {
     const size_t global_id = get_global_id(0);
@@ -89,49 +125,36 @@ kernel void reduce_distribution(
     const size_t id1 = index(pass-1, (global_id << 1) + 1);
     const size_t id  = index(pass, global_id);
 
-    distribution[id] = distribution[id0] + distribution[id1];
+    buffer[id] = buffer[id0] + buffer[id1];
 }
 
-// Modified 32-bit xorshift algorithm. Supposed to give uniform floats in the range [0-1]
-inline float random(
-    const uint seed,
-    const uint global_id
-) {
-    uint x = (seed * (global_id + 19)) ^ 0xFFFFFFFF;
-
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-
-    return (float) ((double) x * 2.3283064370807974e-10);
-}
-
+// Perform measurements by traversing the distribution vector
 kernel void do_measurements(
-    const global float *distribution,
-    global ulong *measurements,
+    global const float *buffer,
+    global ulong *mesures,
     uchar size,
     const uint seed
 ) {
     const size_t global_id = get_global_id(0);
-    const float value = random(seed, global_id);
+    const float rand = random(seed, global_id);
 
-    size_t state = 0;
+    size_t id = 0;
     float sum = 0.0;
 
     for (size--; size; size--) {
-        const float distrib = distribution[index(size, state)];
+        const float value = buffer[index(size, id)];
 
-        if (value > sum + distrib) {
-            sum += distrib;
-            state++;
+        if (rand > sum + value) {
+            sum += value;
+            id++;
         }
 
-        state <<= 1;
+        id <<= 1;
     }
 
-    if (value > sum + distribution[state << 1]) {
-        state++;
+    if (rand > sum + buffer[id << 1]) {
+        id++;
     }
 
-    measurements[global_id] = (ulong) state;
+    mesures[global_id] = (ulong) id;
 }

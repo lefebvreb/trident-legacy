@@ -11,20 +11,17 @@ fn main() {
         )
     };
 
-    let mut computer = Computer::new(4)
+    let mut computer = Computer::new(3)
         .add_gate("H", hadamard_gate)
         .build();
 
     let program = Program::new(0b000)
-        .apply(0, "H")
-        .apply(1, "H")
-        .apply(2, "H")
-        .apply(3, "H")
-        .measure(16);
+        .apply_range(0..3, "H", None)
+        .measure(4096);
 
-    let result = computer.compile_and_run(program, None);
+    let mut result = computer.compile_and_run(program, None);
 
-    for r in result.iter() {
-        println!("|{:04b}>", *r);
-    }
+    result.format_options(0.0, Some(3));
+
+    println!("{}", result);
 }

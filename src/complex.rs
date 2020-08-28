@@ -57,11 +57,27 @@ unsafe impl ocl::traits::OclPrm for c64 {}
 //
 //#################################################################################################
 
-impl From<f32> for c64 {
-    fn from(x: f32) -> c64 {
-        c64(x, 0.0)
-    }
+macro_rules! impl_from {
+    {$from: ty} => {
+        impl From<$from> for c64 {
+            fn from(x: $from) -> c64 {
+                c64(x as f32, 0.0)
+            }
+        }
+    };
 }
+
+impl_from! {i8}
+impl_from! {u8}
+impl_from! {i16}
+impl_from! {u16}
+impl_from! {i32}
+impl_from! {u32}
+impl_from! {i64}
+impl_from! {u64}
+
+impl_from! {f32}
+impl_from! {f64}
 
 impl fmt::Debug for c64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
