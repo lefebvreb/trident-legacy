@@ -1,8 +1,8 @@
 use std::time::SystemTime;
 
 pub(crate) union MWC64X {
-    u32x2: (u32, u32),
-    u64: u64,
+    vector: (u32, u32),
+    scalar: u64,
 }
 
 impl MWC64X {
@@ -15,11 +15,11 @@ impl MWC64X {
                 .as_secs(),
         };
         
-        MWC64X { u64: seed ^ 0x8CCC1D021231BBAC}
+        MWC64X { scalar: seed ^ 0x8CCC1D021231BBAC}
     }
 
     pub(crate) fn state(&self) -> u64 {
-        unsafe { self.u64 }
+        unsafe { self.scalar }
     }
 
     pub(crate) fn skip(&mut self, distance: u64) {
@@ -67,13 +67,13 @@ impl MWC64X {
             acc
         }
 
-        const A: u64 = 4294883355;
-        const M: u64 = 18446383549859758079;
+        const A: u64 = 0xFFFEB81B;
+        const M: u64 = 0xFFFEB81AFFFFFFFF;
 
         let m = modular_pow64(A, distance, M);
-        let state = unsafe { self.u32x2 };
+        let state = unsafe { self.vector };
         let mut x = state.0 as u64 * A + state.1 as u64;
         x = modular_mul64(x, m, M);
-        self.u32x2 = ((x / A) as u32, (x % A) as u32);
+        self.vector = ((x / A) as u32, (x % A) as u32);
     }
 }

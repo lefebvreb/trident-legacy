@@ -1,11 +1,13 @@
+use crate::approx_eq;
 use crate::complex::c64;
 
-use crate::approx_eq;
-
 /// Represents a unitary quantum gate.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Gate {
-    pub(crate) coefficients: (c64, c64, c64, c64),
+    pub(crate) u00: c64,
+    pub(crate) u01: c64,
+    pub(crate) u10: c64,
+    pub(crate) u11: c64,
 }
 
 impl Gate {
@@ -37,10 +39,10 @@ impl Gate {
         if !gate.is_unitary() {
             panic!(
                 "The gate defined by the matrix\n\t[{:?}\t{:?}]\n\t[{:?}\t{:?}]\nis not unitary",
-                gate.coefficients.0,
-                gate.coefficients.1,
-                gate.coefficients.2,
-                gate.coefficients.3,
+                gate.u00,
+                gate.u01,
+                gate.u10,
+                gate.u11,
             );
         }
 
@@ -58,16 +60,29 @@ impl Gate {
         E4: Into<c64> + Copy,
     {
         Gate {
-            coefficients: (
-                u00.into(), u01.into(),
-                u10.into(), u11.into(),
-            ),
+            u00: u00.into(), 
+            u01: u01.into(),
+            u10: u10.into(), 
+            u11: u11.into(),
+        }
+    }
+
+    #[inline]
+    pub fn invert(&self) -> Gate {
+        let (a, b, c, d) = (self.u00, self.u01, self.u10, self.u11);
+
+        let det_inv = (a*d - b*c).recip();
+        Gate{
+            u00: d * det_inv,
+            u01: -b * det_inv,
+            u10: -c * det_inv,
+            u11: a * det_inv,
         }
     }
 
     #[inline]
     pub(crate) fn is_unitary(&self) -> bool {
-        let (a, b, c, d) = self.coefficients;
+        let (a, b, c, d) = (self.u00, self.u01, self.u10, self.u11);
 
         approx_eq(a.norm_sqr() + c.norm_sqr(), 1f32) &&
         (a*b.conjugate() + c*d.conjugate()).approx_eq(c64::ZERO) &&

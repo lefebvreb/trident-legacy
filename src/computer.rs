@@ -6,7 +6,7 @@ use std::time::Instant;
 use crate::complex::c64;
 use crate::gates::Gate;
 use crate::measure::Measurements;
-use crate::program::Program;
+use crate::program::{Program, ProgramBuilder};
 use crate::random::MWC64X;
 
 /// Represents a qbit's address in the quantum computer.
@@ -23,6 +23,7 @@ pub type Address = u8;
 pub struct ComputerBuilder {
     size: Address,
     gates: HashMap<&'static str, Gate>,
+    gates_inverses: HashMap<&'static str, Gate>,
 }
 
 impl ComputerBuilder {
@@ -38,6 +39,7 @@ impl ComputerBuilder {
                 gate_name
             );
         };
+        self.gates_inverses.insert(gate_name, gate.invert());
         self
     }
 
@@ -70,6 +72,8 @@ impl ComputerBuilder {
             .expect("Cannot create measurements buffer");
 
         let gates = self.gates;
+
+        let gates_inverses = self.gates_inverses;
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
             .arg(&main_buffer)
@@ -116,6 +120,7 @@ impl ComputerBuilder {
         Computer {
             size,
             gates,
+            gates_inverses,
             main_buffer,
             measurements_buffer,
             apply_gate,
@@ -138,6 +143,7 @@ impl ComputerBuilder {
 pub struct Computer {
     pub(crate) size: Address,
     pub(crate) gates: HashMap<&'static str, Gate>,
+    pub(crate) gates_inverses: HashMap<&'static str, Gate>,
     main_buffer: Buffer<c64>,
     measurements_buffer: Buffer<u64>,
     apply_gate: Kernel,
@@ -170,10 +176,18 @@ impl<'computer> Computer {
             );
         }
 
+        let gates = HashMap::new();
+        let gates_inverses = HashMap::new();
+
         ComputerBuilder {
             size,
-            gates: HashMap::new(),
+            gates,
+            gates_inverses,
         }
+    }
+
+    pub fn new_program(&self, initial_state: &str) -> ProgramBuilder {
+        ProgramBuilder::new(self, initial_state)
     }
 
     /// Runs the `program` on the computer. Uses, if provided, `seed` as the seed of the
@@ -206,21 +220,27 @@ impl<'computer> Computer {
         // Apply gates
         for instruction in program.instructions.iter() {
             let target = instruction.target;
-            let gate = self.gates.get(instruction.gate_name).unwrap();
-            let kernel;
 
-            if let Some(control) = instruction.control {
-                kernel = &self.apply_controlled_gate;
-                kernel.set_arg(6, control).unwrap();
+            let gate = if instruction.reverse {
+                self.gates[instruction.gate_name]
             } else {
-                kernel = &self.apply_gate;
-            }
+                self.gates_inverses[instruction.gate_name]
+            };
+
+            let kernel = if let Some(control) = instruction.control {
+                let kernel = &self.apply_controlled_gate;
+                kernel.set_arg(6, control).unwrap();
+                kernel
+            } else {
+                &self.apply_gate
+            };
 
             kernel.set_arg(1, target).unwrap();
-            kernel.set_arg(2, gate.coefficients.0).unwrap();
-            kernel.set_arg(3, gate.coefficients.1).unwrap();
-            kernel.set_arg(4, gate.coefficients.2).unwrap();
-            kernel.set_arg(5, gate.coefficients.3).unwrap();
+
+            kernel.set_arg(2, gate.u00).unwrap();
+            kernel.set_arg(3, gate.u01).unwrap();
+            kernel.set_arg(4, gate.u10).unwrap();
+            kernel.set_arg(5, gate.u11).unwrap();
 
             unsafe { 
                 kernel.enq()

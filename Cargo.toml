@@ -9,6 +9,3 @@ overflow-checks = false
 
 [dependencies.ocl]
 version = "0.19.3"
-
-[dependencies.num-complex]
-version = "0.3.0"

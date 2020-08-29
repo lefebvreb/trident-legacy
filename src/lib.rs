@@ -1,7 +1,9 @@
 // TODO
 
+// Implement unapplying gates
+// Implement subroutine system with char as variables, call and uncalling
+// Make the ComputerBuilder a &mut build pattern
 // Comment code
-// Various optimizations ?
 // Add standard gates
 // Impl Display for computer, program...
 // State type
@@ -37,4 +39,4 @@ pub use complex::c64;
 pub use computer::{Address, Computer, ComputerBuilder};
 pub use gates::Gate;
 pub use measure::Measurements;
-pub use program::{Program, ProgramBuilder};
+pub use program::{InstructionChain, Program, ProgramBuilder};

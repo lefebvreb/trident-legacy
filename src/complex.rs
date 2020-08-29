@@ -51,6 +51,13 @@ impl c64 {
         c64(self.0, -self.1)
     }
 
+    /// Returns the multiplicative inverse of `self`.
+    #[inline]
+    pub fn recip(self) -> c64 {
+        let d = self.norm_sqr().recip();
+        c64(self.0*d, -self.1*d)
+    }
+
     /// Returns the square of the norm of `self`.
     #[inline]
     pub fn norm_sqr(self) -> f32 {
@@ -107,7 +114,7 @@ impl_from_primitive! {f64}
 
 impl fmt::Debug for c64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}{:+?}i", self.0, self.1)
+        write!(f, "{:.5e}{:+.5e}i", self.0, self.1)
     }
 }
 

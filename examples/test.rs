@@ -1,4 +1,4 @@
-use trident::{Computer, Gate, Program};
+use trident::{InstructionChain, Computer, Gate};
 
 // cargo run --example test --release
 
@@ -15,13 +15,13 @@ fn main() {
         .add_gate("H", hadamard_gate)
         .build();
 
-    let program = Program::new(&computer, "|0000000000>")
+    let program = computer.new_program("|0000000000>")
         .apply_range(0..10, "H", None)
+        .apply(0, "H", None)
         .measure(1024);
 
     let mut result = computer.run(program, None);
 
-    result.format_options(None, 0);
-
+    result.format_options(None, 20);
     println!("{}", result);
 }
