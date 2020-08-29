@@ -9,6 +9,7 @@ use crate::measure::Measurements;
 use crate::program::Program;
 use crate::random::MWC64X;
 
+/// Represents a qbit's address in the quantum computer.
 pub type Address = u8;
 
 //#################################################################################################
@@ -17,6 +18,7 @@ pub type Address = u8;
 //
 //#################################################################################################
 
+/// A builder for the `Computer` struct.
 #[derive(Debug)]
 pub struct ComputerBuilder {
     size: Address,
@@ -24,13 +26,12 @@ pub struct ComputerBuilder {
 }
 
 impl ComputerBuilder {
+    /// Register a new gate for the Computer being build.
+    /// 
+    /// # Panics
+    /// 
+    /// This function will panic if they is already a gate named `gate_name`.
     pub fn add_gate(mut self, gate_name: &'static str, gate: Gate) -> ComputerBuilder {
-        if !gate.is_unitary() {
-            panic!(
-                "Gate \"{}\" is not unitary", 
-                gate_name,
-            );
-        }
         if self.gates.insert(gate_name, gate).is_some() {
             panic!(
                 "Gate name duplicata: \"{}\"", 
@@ -44,6 +45,12 @@ impl ComputerBuilder {
         unimplemented!()
     }*/
 
+    /// Builds and returns a new `Computer` from the builder and consumes it.
+    /// 
+    /// # Panics
+    /// 
+    /// This function will panic if something goes wrong when initializing opencl,
+    /// compiling the shader or allocating memory on the gpu.
     pub fn build(self) -> Computer {
         let size = self.size;
         let dim = 1usize << size;
@@ -126,6 +133,7 @@ impl ComputerBuilder {
 //
 //#################################################################################################
 
+/// Represents a quantum computer, with it's memory and capabilities.
 #[derive(Debug)]
 pub struct Computer {
     pub(crate) size: Address,
@@ -142,6 +150,12 @@ pub struct Computer {
 impl<'computer> Computer {
     const MEASUREMENTS_BLOCK: usize = 1024;
 
+    /// Creates a new `ComputerBuilder` struct to begin the construction of a new `Computer`.
+    /// 
+    /// # Panics
+    /// 
+    /// This function will panic if `size` is 0 or greater than the number of bits of the operating
+    /// system's address size.
     pub fn new(size: Address) -> ComputerBuilder {
         if size == 0 {
             panic!("Computer's register's size is 0, it should be at least 1");
@@ -149,7 +163,7 @@ impl<'computer> Computer {
         let ptr_size = 8 * std::mem::size_of::<usize>();
         if size as usize > ptr_size {
             panic!(
-                "Computer's register's size is {}, but the device's address size are only {} bits: it needs at least {} bit(s) more",
+                "Computer's register's size is {}, but the device's address size are only {} bits wide: it needs at least {} bit(s) more",
                 size,
                 ptr_size,
                 size as usize - ptr_size,
@@ -162,7 +176,20 @@ impl<'computer> Computer {
         }
     }
 
-    pub fn compile_and_run(&mut self, program: Program, seed: Option<u64>) -> Measurements {
+    /// Runs the `program` on the computer. Uses, if provided, `seed` as the seed of the
+    /// pseudo-random number generator to allow recreation of results. If `seed` is `None`, the system's
+    /// time will be used as a seed.
+    /// 
+    /// Returns a Measurements struct, containing all needed information and results about the computation.
+    /// 
+    /// # Panics
+    /// 
+    /// This function will panic if something goes wrong while performing computations, such as the
+    /// buffer being unwritable/unreadable or the kernels crashing somehow.
+    pub fn run<S>(&mut self, program: Program, seed: S) -> Measurements
+    where
+        S: Into<Option<u64>>,
+    {
         let start = Instant::now();
 
         // Initialization of amplitudes buffer
@@ -232,7 +259,9 @@ impl<'computer> Computer {
         }*/
 
         {
-            let mut prng = MWC64X::new(seed);
+            let mut prng = MWC64X::new(seed.into());
+            // Skips the first few numbers as they tend to be of poorer quality
+            prng.skip(16);
 
             let mut buffer = vec![0; Computer::MEASUREMENTS_BLOCK];
             let mut results = HashMap::with_capacity(program.samples);

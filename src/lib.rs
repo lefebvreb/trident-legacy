@@ -13,6 +13,8 @@
 // Do kernel computation with double precision ?
 // Publish ??
 
+// cargo doc --no-deps --open
+
 extern crate ocl;
 
 // Modules
@@ -32,7 +34,7 @@ pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
 
 // Exports
 pub use complex::c64;
-pub use computer::{Computer, ComputerBuilder};
+pub use computer::{Address, Computer, ComputerBuilder};
 pub use gates::Gate;
 pub use measure::Measurements;
 pub use program::{Program, ProgramBuilder};

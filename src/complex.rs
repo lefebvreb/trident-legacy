@@ -8,41 +8,63 @@ use crate::approx_eq;
 //
 //#################################################################################################
 
+/// Represents a complex number with two single precision (32 bits) floating point.
+/// numbers.
 #[repr(C)]
 #[allow(non_camel_case_types)]
 #[derive(Copy, PartialEq, Clone, Default)]
 pub struct c64(f32, f32);
 
 impl c64 {
-    pub const ZERO: c64 = c64::new(0f32, 0f32);
-    pub const ONE: c64 = c64::new(1f32, 0f32);
-    pub const I: c64 = c64::new(0f32, 1f32);
+    /// The complex reprensenting zero.
+    pub const ZERO: c64 = c64(0f32, 0f32);
+    /// The complex reprensenting one.
+    pub const ONE: c64 = c64(1f32, 0f32);
+    /// The complex reprensenting i, the imaginary unit.
+    pub const I: c64 = c64(0f32, 1f32);
 
+    /// Constructs a new complex from it's real part and imaginary part.
     #[inline]
-    pub const fn new(re: f32, im: f32) -> c64 {
-        c64(re, im)
+    pub fn new<R, I>(re: R, im: I) -> c64
+    where
+        R: Into<f32>,
+        I: Into<f32>,
+    {
+        c64(re.into(), im.into())
     }
 
+    /// Constructs a new complex from it's radius and argument.
     #[inline]
-    pub fn new_euler(r: f32, arg: f32) -> c64 {
+    pub fn new_euler<R, A>(r: R, arg: A) -> c64
+    where
+        R: Into<f32>,
+        A: Into<f32>,
+    {
+        let r = r.into();
+        let arg = arg.into();
         c64(r * arg.cos(), r * arg.sin())
     }
 
+    /// Returns the complex conjugate of `self`.
     #[inline]
     pub fn conjugate(self) -> c64 {
         c64(self.0, -self.1)
     }
 
+    /// Returns the square of the norm of `self`.
     #[inline]
     pub fn norm_sqr(self) -> f32 {
         self.0*self.0 + self.1*self.1
     }
 
+    /// Returns the norm of `self`.
     #[inline]
     pub fn norm(self) -> f32 {
         self.norm_sqr().sqrt()
     }
 
+    /// Compare two complex numbers and returns true they parts are pairwise equal with 
+    /// the `EPSILON` precision, where `EPSILON` is about `1e-7`.
     #[inline]
     pub fn approx_eq(self, rhs: c64) -> bool {
         approx_eq(self.0, rhs.0) && approx_eq(self.1, rhs.1)
@@ -57,7 +79,7 @@ unsafe impl ocl::traits::OclPrm for c64 {}
 //
 //#################################################################################################
 
-macro_rules! impl_from {
+macro_rules! impl_from_primitive {
     {$from: ty} => {
         impl From<$from> for c64 {
             fn from(x: $from) -> c64 {
@@ -67,17 +89,21 @@ macro_rules! impl_from {
     };
 }
 
-impl_from! {i8}
-impl_from! {u8}
-impl_from! {i16}
-impl_from! {u16}
-impl_from! {i32}
-impl_from! {u32}
-impl_from! {i64}
-impl_from! {u64}
+impl_from_primitive! {i8}
+impl_from_primitive! {u8}
+impl_from_primitive! {i16}
+impl_from_primitive! {u16}
+impl_from_primitive! {i32}
+impl_from_primitive! {u32}
+impl_from_primitive! {i64}
+impl_from_primitive! {u64}
+impl_from_primitive! {isize}
+impl_from_primitive! {usize}
+impl_from_primitive! {i128}
+impl_from_primitive! {u128}
 
-impl_from! {f32}
-impl_from! {f64}
+impl_from_primitive! {f32}
+impl_from_primitive! {f64}
 
 impl fmt::Debug for c64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

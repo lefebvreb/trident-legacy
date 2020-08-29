@@ -35,6 +35,7 @@ impl Ord for StateFreq {
     }
 }
 
+/// Holds every information and results of a previous computation.
 pub struct Measurements {
     duration: Duration,
     size: Address,
@@ -72,10 +73,13 @@ impl Measurements {
         }
     }
 
+    /// Returns the total duration of the computation
     pub fn duration(&self) -> Duration {
         self.duration
     }
 
+    /// Returns the `n` most frequent states measured, from most frequent to least frequent.
+    /// If they was less than `n` different states measured, returns all of them.
     pub fn n_most(&self, n: usize) -> Box<[u64]> {
         self.measures.iter()
             .map(|pair| pair.state)
@@ -83,10 +87,17 @@ impl Measurements {
             .collect()
     }
 
-    pub fn format_options<T, U>(&mut self, min_percentile: T, max_display: U) 
+    /// Specifies the options for formatting the results:
+    /// - `min_percentile` is the minimal percentile that results need to have been measured with
+    /// in order to be displayed (default: `None`).
+    /// - `max_display` is the maximum number of states that will be displayed. The rest will be
+    /// hidden (default: `25`).
+    /// 
+    /// Leave them to `None` to disable them.
+    pub fn format_options<F, I>(&mut self, min_percentile: F, max_display: I) 
     where
-        T: Into<Option<f32>>,
-        U: Into<Option<usize>>,
+        F: Into<Option<f32>>,
+        I: Into<Option<usize>>,
     {
         self.min_percentile = min_percentile.into();
         self.max_display = max_display.into();        

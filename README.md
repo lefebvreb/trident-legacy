@@ -1,6 +1,22 @@
-# qrust - quantum computing with rust
+<img align="left" alt="" src="logo.svg" height="150" />
 
-Fast library and api for emulating quantum computing with rust. Built on top of [ocl](https://github.com/cogciprocate/ocl) (rust opencl bindings) and GPU-enabled !
+# Trident
+
+Fast GPU-enabled library and api for quantum computing emulation with rust.
+
+Compatible with linux, macos, window.
+
+Built on top of [ocl](https://github.com/cogciprocate/ocl) (opencl bindings for rust).
+
+## Getting started
+
+You will have to install the opencl shared libraries in order to compile the `ocl` crate. They are available on linux, macos and window.
+
+Here is Deutsch's algorithm with trident, a simple example:
+
+```rust
+// todo
+```
 
 ## References
 

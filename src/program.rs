@@ -95,6 +95,7 @@ pub(crate) struct Instruction {
 //
 //#################################################################################################
 
+/// A builder for the `Program` struct.
 #[derive(Debug)]
 pub struct ProgramBuilder<'a> {
     initial_state: usize,

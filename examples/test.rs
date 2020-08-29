@@ -19,7 +19,7 @@ fn main() {
         .apply_range(0..10, "H", None)
         .measure(1024);
 
-    let mut result = computer.compile_and_run(program, None);
+    let mut result = computer.run(program, None);
 
     result.format_options(None, 0);
 
