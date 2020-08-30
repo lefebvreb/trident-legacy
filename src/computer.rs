@@ -20,7 +20,6 @@ pub type Address = u8;
 //#################################################################################################
 
 /// A builder for the `Computer` struct.
-#[derive(Debug)]
 pub struct ComputerBuilder {
     size: Address,
     gates: HashMap<&'static str, Gate>,
@@ -35,6 +34,11 @@ impl ComputerBuilder {
     /// 
     /// This function will panic if they is already a gate named `gate_name`.
     pub fn add_gate(&mut self, gate_name: &'static str, gate: Gate) -> &mut ComputerBuilder {
+        assert!(
+            !self.built,
+            "Computer has already been built, cannot modify it any more",
+        );
+
         if self.gates.insert(gate_name, gate).is_some() {
             panic!(
                 "Gate name duplicata: \"{}\"", 
@@ -46,7 +50,20 @@ impl ComputerBuilder {
     }
 
     pub fn add_default_gates(&mut self) -> &mut ComputerBuilder {
-        unimplemented!()
+        assert!(
+            !self.built,
+            "Computer has already been built, cannot modify it any more",
+        );
+
+        let sqrt2inv = 2f32.sqrt().recip();
+
+        unsafe {
+            self.add_gate("1", Gate::new_unchecked(1, 0, 1, 0))
+                .add_gate("H", Gate::new_unchecked(sqrt2inv,sqrt2inv, sqrt2inv, -sqrt2inv))
+                .add_gate("X", Gate::new_unchecked(0, 1, 1, 0))
+                .add_gate("Y", Gate::new_unchecked(0, -c64::I, c64::I, 0))
+                .add_gate("Z", Gate::new_unchecked(1, 0, 0, -1))
+        }
     }
 
     /// Builds and returns a new `Computer` from the builder and consumes it.
@@ -56,6 +73,11 @@ impl ComputerBuilder {
     /// This function will panic if something goes wrong when initializing opencl,
     /// compiling the shader or allocating memory on the gpu.
     pub fn build(&mut self) -> Computer {
+        assert!(
+            !self.built,
+            "Computer has already been built, cannot modify it any more",
+        );
+        
         let size = self.size;
         let dim = 1usize << size;
 
@@ -149,7 +171,6 @@ impl ComputerBuilder {
 //#################################################################################################
 
 /// Represents a quantum computer, with it's memory and capabilities.
-#[derive(Debug)]
 pub struct Computer {
     pub(crate) size: Address,
     pub(crate) gates: HashMap<&'static str, Gate>,

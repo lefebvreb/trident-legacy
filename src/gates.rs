@@ -2,7 +2,7 @@ use crate::approx_eq;
 use crate::complex::c64;
 
 /// Represents a unitary quantum gate.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct Gate {
     pub(crate) u00: c64,
     pub(crate) u01: c64,

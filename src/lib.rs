@@ -1,13 +1,13 @@
 // TODO
 
-// Add standard gates
+// Phase shift gate constructor
 // Impl Display for computer, program...
 // Bench and maybe improve random generator
-// State type
 // Tests
 // Examples
 // Comment code
 // Doc
+// Two times controlled gates ?
 // Benches ?
 // Constify ?
 // Do kernel computation with double precision ?
@@ -25,11 +25,9 @@ mod measure;
 mod program;
 mod random;
 
-// Returns true if x and y are equals with EPSILON precision
 #[inline]
 pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
-    const EPSILON: f32 = 1e-7f32;
-    (x - y).abs() < EPSILON
+    (x - y).abs() < f32::EPSILON
 }
 
 // Exports

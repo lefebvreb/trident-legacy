@@ -10,25 +10,23 @@ use crate::computer::{Address, Computer};
 //
 //#################################################################################################
 
-// Parse a state from a &str. The regex is 
+// Parse a state from a &str. The regex is |[01]{size}> where size is the computer's size.
 fn parse_state(computer: &Computer, state: &str) -> usize {
-    if state.len() != computer.size as usize + 2 {
-        panic!(
-            "The given initial state \"{}\" is invalid, it must match \"|[01]{{1,{}}}>\": the length is invalid", 
-            state,
-            computer.size,
-        );
-    }
+    assert!(
+        state.len() == computer.size as usize + 2,
+        "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": the length is invalid", 
+        state,
+        computer.size,
+    );
 
     let mut chars =  state.chars();
 
-    if chars.next().unwrap() != '|' {
-        panic!(
-            "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": does not begin with a '|'", 
-            state,
-            computer.size,
-        );
-    }
+    assert!(
+        chars.next().unwrap() == '|',
+        "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": does not begin with a '|'", 
+        state,
+        computer.size,
+    );
 
     let mut result = 0;
 
@@ -47,13 +45,12 @@ fn parse_state(computer: &Computer, state: &str) -> usize {
         }
     }
 
-    if chars.next().unwrap() != '>' {
-        panic!(
-            "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": does not end with a '>'", 
-            state,
-            computer.size,
-        );
-    }
+    assert!(
+        chars.next().unwrap() == '>',
+        "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": does not end with a '>'", 
+        state,
+        computer.size,
+    );
 
    result
 }
@@ -82,7 +79,7 @@ pub(crate) type Instruction = SingleInstruction<Address>;
 mod private {
     pub trait InstructionChainInternals<A>
     where
-        A: Copy + Clone
+        A: Copy
     {
         fn push_instruction(
             &mut self, 
@@ -107,7 +104,7 @@ mod private {
 
 pub trait InstructionChain<A>: private::InstructionChainInternals<A>
 where
-    A: Copy + Clone
+    A: Copy
 {
     fn apply<C>(
         &mut self, 
@@ -135,8 +132,8 @@ where
         control: C,
     ) -> &mut Self
     where  
-        C: Into<Option<A>> + Copy,
         R: IntoIterator<Item = A>,
+        C: Into<Option<A>> + Copy,
     {
         for target in targets {
             self.push_instruction(
@@ -176,8 +173,8 @@ where
         control: C,
     ) -> &mut Self
     where  
-        C: Into<Option<A>> + Copy,
         R: IntoIterator<Item = A>,
+        C: Into<Option<A>> + Copy,
     {
         for target in targets {
             self.push_instruction(
@@ -308,7 +305,6 @@ where
 //
 //#################################################################################################
 
-#[derive(Debug)]
 pub struct SubRoutineBuilder<'a> {
     name: &'static str,
     variables: HashSet<char>,
@@ -319,6 +315,11 @@ pub struct SubRoutineBuilder<'a> {
 
 impl<'a> SubRoutineBuilder<'a> {
     pub fn end(&mut self) -> &mut ProgramBuilder<'a> {
+        assert!(
+            !self.ended, 
+            "SubRoutine has already been ended, cannot add more gates"
+        );
+
         self.ended = true;
 
         let variables = {
@@ -409,7 +410,6 @@ pub struct SubRoutine {
 //#################################################################################################
 
 /// A builder for the `Program` struct.
-#[derive(Debug)]
 pub struct ProgramBuilder<'a> {
     initial_state: usize,
     instructions: Vec<Instruction>,
@@ -464,7 +464,10 @@ impl<'a> ProgramBuilder<'a> {
     }
 
     pub fn measure(&mut self, samples: usize) -> Program {
-        assert!(samples != 0, "Samples count cannot be 0");
+        assert!(
+            samples != 0, 
+            "Samples count cannot be 0"
+        );
 
         self.measured = true;
 

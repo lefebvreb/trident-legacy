@@ -130,7 +130,7 @@ impl fmt::Display for Measurements {
 
             write!(
                 f,
-                "  |{:0size$b}> ~> {:5.2}%,\n",
+                "    |{:0size$b}> ~> {:5.2}%,\n",
                 pair.state,
                 pair.percent,
                 size = self.size as usize,
