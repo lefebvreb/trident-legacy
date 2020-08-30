@@ -16,8 +16,9 @@ fn main() {
         .build();
 
     let program = computer.new_program("|0000000000>")
-        .apply_range(0..10, "H", None)
-        .apply(0, "H", None)
+        .apply("H", 0, None)
+        .apply_iter("H", 1..5, None)
+        .apply_iter("H", vec![6, 7, 9, 8], None)
         .measure(1024);
 
     let mut result = computer.run(program, None);

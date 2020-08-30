@@ -1,14 +1,12 @@
 // TODO
 
-// Implement unapplying gates
-// Implement subroutine system with char as variables, call and uncalling
-// Make the ComputerBuilder a &mut build pattern
-// Comment code
 // Add standard gates
 // Impl Display for computer, program...
+// Bench and maybe improve random generator
 // State type
 // Tests
 // Examples
+// Comment code
 // Doc
 // Benches ?
 // Constify ?

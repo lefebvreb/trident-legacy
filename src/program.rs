@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::iter::Iterator;
+use std::iter::IntoIterator;
+use std::mem::swap;
 
 use crate::computer::{Address, Computer};
 
@@ -9,10 +10,11 @@ use crate::computer::{Address, Computer};
 //
 //#################################################################################################
 
+// Parse a state from a &str. The regex is 
 fn parse_state(computer: &Computer, state: &str) -> usize {
     if state.len() != computer.size as usize + 2 {
         panic!(
-            "The given initial state \"{}\" is invalid, it must match \"|[01]{{{}}}>\": the length is invalid", 
+            "The given initial state \"{}\" is invalid, it must match \"|[01]{{1,{}}}>\": the length is invalid", 
             state,
             computer.size,
         );
@@ -62,9 +64,9 @@ fn parse_state(computer: &Computer, state: &str) -> usize {
 //#################################################################################################
 
 #[derive(Copy, Clone, Debug)]
-pub struct SingleInstruction<T> {
-    pub(crate) target: T,
+pub(crate) struct SingleInstruction<T> {
     pub(crate) gate_name: &'static str,
+    pub(crate) target: T,
     pub(crate) control: Option<T>,
     pub(crate) reverse: bool,
 }
@@ -73,31 +75,52 @@ pub(crate) type Instruction = SingleInstruction<Address>;
 
 //#################################################################################################
 //
-//                                   Instruction chain trait
+//                             InstructionChainInternals trait
 //
 //#################################################################################################
 
-pub trait InstructionChain<A> {
-    fn push_instruction(
-        &mut self, 
-        target: A,
-        gate_name: &'static str, 
-        control: Option<A>,
-        reverse: bool,
-    );
+mod private {
+    pub trait InstructionChainInternals<A>
+    where
+        A: Copy + Clone
+    {
+        fn push_instruction(
+            &mut self, 
+            gate_name: &'static str, 
+            target: A,
+            control: Option<A>,
+            reverse: bool,
+        );
+    
+        fn get_subroutine(
+            &self,
+            subroutine_name: &str,
+        ) -> Option<&super::SubRoutine>;
+    }
+}
 
+//#################################################################################################
+//
+//                                  InstructionChain trait
+//
+//#################################################################################################
+
+pub trait InstructionChain<A>: private::InstructionChainInternals<A>
+where
+    A: Copy + Clone
+{
     fn apply<C>(
         &mut self, 
-        target: A,
         gate_name: &'static str, 
+        target: A,
         control: C,
     ) -> &mut Self
     where
         C: Into<Option<A>>,
     {
         self.push_instruction(
-            target,
             gate_name,
+            target,
             control.into(),
             false,
         );
@@ -105,20 +128,20 @@ pub trait InstructionChain<A> {
         self
     }
 
-    fn apply_range<R, C>(
+    fn apply_iter<R, C>(
         &mut self, 
-        targets: R,
-        gate_name: &'static str, 
+        gate_name: &'static str,
+        targets: R,        
         control: C,
     ) -> &mut Self
     where  
         C: Into<Option<A>> + Copy,
-        R: Iterator<Item = A>,
+        R: IntoIterator<Item = A>,
     {
         for target in targets {
             self.push_instruction(
-                target,
                 gate_name,
+                target,
                 control.into(),
                 false,
             );
@@ -129,16 +152,16 @@ pub trait InstructionChain<A> {
 
     fn unapply<C>(
         &mut self, 
-        target: A,
         gate_name: &'static str, 
+        target: A,        
         control: C,
     ) -> &mut Self
     where
         C: Into<Option<A>>,
     {
         self.push_instruction(
-            target,
             gate_name,
+            target,
             control.into(),
             true,
         );
@@ -146,22 +169,132 @@ pub trait InstructionChain<A> {
         self
     }
 
-    fn unapply_range<R, C>(
+    fn unapply_iter<R, C>(
         &mut self, 
-        targets: R,
         gate_name: &'static str, 
+        targets: R,
         control: C,
     ) -> &mut Self
     where  
         C: Into<Option<A>> + Copy,
-        R: Iterator<Item = A>,
+        R: IntoIterator<Item = A>,
     {
         for target in targets {
             self.push_instruction(
-                target,
                 gate_name,
+                target,
                 control.into(),
                 true,
+            );
+        }
+
+        self
+    }
+
+    fn call<V>(
+        &mut self,
+        subroutine_name: &'static str,
+        arguments: V,
+    ) -> &mut Self 
+    where
+        V: Iterator<Item = (char, A)>
+    {
+        // Yep, a pointer. Seriously, f*** borrowck.
+        let subroutine: *const SubRoutine = self.get_subroutine(subroutine_name)
+            .expect(format!(
+                "There are no subroutines named \"{}\"",
+                subroutine_name,
+            ).as_str());
+
+        let map = {
+            let mut result = HashMap::with_capacity(arguments.size_hint().0);
+            for (variable, argument) in arguments.take(unsafe {(*subroutine).variables.len()}) {
+                assert!(
+                    unsafe {(*subroutine).variables.contains(&variable)}, 
+                    "No variable named '{}' in subroutine named \"{}\"",
+                    variable,
+                    subroutine_name,
+                );
+                result.insert(variable, argument);
+            }
+            result
+        };
+
+        for instruction in unsafe {(*subroutine).instructions.iter()} {
+            let target = *map.get(&instruction.target)
+                .expect(format!(
+                    "Can't match variable '{}' to a value: value not specified",
+                    instruction.target,
+                ).as_str());
+
+            let control = instruction.control.map(|c| 
+                *map.get(&c)
+                    .expect(format!(
+                        "Can't match variable '{}' to a value: value not specified",
+                        c,
+                    ).as_str())
+            );
+
+            self.push_instruction(
+                instruction.gate_name,
+                target,
+                control,
+                instruction.reverse,
+            );
+        }
+
+        self
+    }
+
+    fn uncall<V>(
+        &mut self,
+        subroutine_name: &'static str,
+        arguments: V,
+    ) -> &mut Self 
+    where
+        V: Iterator<Item = (char, A)>
+    {
+        // Yep, a pointer. Seriously, f*** borrowck.
+        let subroutine: *const SubRoutine = self.get_subroutine(subroutine_name)
+            .expect(format!(
+                "There are no subroutines named \"{}\"",
+                subroutine_name,
+            ).as_str());
+
+        let map = {
+            let mut result = HashMap::with_capacity(arguments.size_hint().0);
+            for (variable, argument) in arguments.take(unsafe {(*subroutine).variables.len()}) {
+                assert!(
+                    unsafe {(*subroutine).variables.contains(&variable)}, 
+                    "No variable named '{}' in subroutine named \"{}\"",
+                    variable,
+                    subroutine_name,
+                );
+                result.insert(variable, argument);
+            }
+            result
+        };
+
+        for instruction in unsafe {(*subroutine).instructions.iter().rev()} {
+            let target = *map.get(&instruction.target)
+                .expect(format!(
+                    "Can't match variable '{}' to a value: value not specified",
+                    instruction.target,
+                ).as_str());
+
+            let control = instruction.control.map(|c| 
+                *map.get(&c)
+                    .expect(format!(
+                        "Can't match variable '{}' to a value: value not specified",
+                        c,
+                    ).as_str())
+            );
+
+            self.push_instruction(
+                instruction.gate_name,
+                target,
+                control,
+                !instruction.reverse,
             );
         }
 
@@ -171,15 +304,9 @@ pub trait InstructionChain<A> {
 
 //#################################################################################################
 //
-//                        SubRoutine & SubRoutineBuilder types
+//                                      SubRoutineBuilder
 //
 //#################################################################################################
-
-#[derive(Debug)]
-pub struct SubRoutine {
-    variables: Box<[char]>,
-    instructions: Box<[SingleInstruction<char>]>,
-}
 
 #[derive(Debug)]
 pub struct SubRoutineBuilder<'a> {
@@ -196,13 +323,13 @@ impl<'a> SubRoutineBuilder<'a> {
 
         let variables = {
             let mut result = HashSet::with_capacity(0);
-            std::mem::swap(&mut self.variables, &mut result);
-            result.iter().map(|c| *c).collect()
+            swap(&mut self.variables, &mut result);
+            result
         };
 
         let instructions = {
             let mut result = Vec::with_capacity(0);
-            std::mem::swap(&mut self.instructions, &mut result);
+            swap(&mut self.instructions, &mut result);
             result.into()
         };
 
@@ -215,11 +342,11 @@ impl<'a> SubRoutineBuilder<'a> {
     }
 }
 
-impl InstructionChain<char> for SubRoutineBuilder<'_> {
+impl private::InstructionChainInternals<char> for SubRoutineBuilder<'_> {
     fn push_instruction(
         &mut self,
-        target: char,
         gate_name: &'static str, 
+        target: char,
         control: Option<char>,
         reverse: bool,
     ) {
@@ -246,12 +373,33 @@ impl InstructionChain<char> for SubRoutineBuilder<'_> {
         }
 
         self.instructions.push(SingleInstruction {
-            target,
             gate_name,
+            target,
             control,
             reverse,
         });
     }
+
+    fn get_subroutine(
+        &self,
+        subroutine_name: &str,
+    ) -> Option<&SubRoutine> {
+        self.program.subroutines.get(subroutine_name)
+    }
+}
+
+impl InstructionChain<char> for SubRoutineBuilder<'_> {}
+
+//#################################################################################################
+//
+//                                      SubRoutine
+//
+//#################################################################################################
+
+#[derive(Debug)]
+pub struct SubRoutine {
+    variables: HashSet<char>,
+    instructions: Box<[SingleInstruction<char>]>,
 }
 
 //#################################################################################################
@@ -338,11 +486,11 @@ impl<'a> ProgramBuilder<'a> {
     } 
 }
 
-impl InstructionChain<Address> for ProgramBuilder<'_> {
+impl private::InstructionChainInternals<Address> for ProgramBuilder<'_> {
     fn push_instruction(
         &mut self,
-        target: Address,
         gate_name: &'static str, 
+        target: Address,
         control: Option<Address>,
         reverse: bool,
     ) {
@@ -371,13 +519,22 @@ impl InstructionChain<Address> for ProgramBuilder<'_> {
         }
 
         self.instructions.push(SingleInstruction {
-            target,
             gate_name,
+            target,
             control,
             reverse,
         });
     }
+
+    fn get_subroutine(
+        &self,
+        subroutine_name: &str,
+    ) -> Option<&SubRoutine> {
+        self.subroutines.get(subroutine_name)
+    }
 }
+
+impl InstructionChain<Address> for ProgramBuilder<'_> {}
 
 //#################################################################################################
 //

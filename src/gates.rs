@@ -89,32 +89,3 @@ impl Gate {
         approx_eq(b.norm_sqr() + d.norm_sqr(), 1f32)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn is_unitary() {
-        let h = { 
-            let sqrt2inv = 2f32.sqrt().recip();
-            Gate::new(
-                sqrt2inv, sqrt2inv, 
-                sqrt2inv, -sqrt2inv,
-            )
-        };
-        assert!(h.is_unitary());
-
-        let x = Gate::new(
-            0.0, 1.0,
-            1.0, 0.0,
-        );
-        assert!(x.is_unitary());
-
-        let y = Gate::new(
-            0.0, -c64::I,
-            c64::I, 0.0,
-        );
-        assert!(y.is_unitary());
-    }
-}

@@ -1,6 +1,7 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
+use std::mem::swap;
 use std::time::Instant;
 
 use crate::complex::c64;
@@ -24,6 +25,7 @@ pub struct ComputerBuilder {
     size: Address,
     gates: HashMap<&'static str, Gate>,
     gates_inverses: HashMap<&'static str, Gate>,
+    built: bool,
 }
 
 impl ComputerBuilder {
@@ -32,7 +34,7 @@ impl ComputerBuilder {
     /// # Panics
     /// 
     /// This function will panic if they is already a gate named `gate_name`.
-    pub fn add_gate(mut self, gate_name: &'static str, gate: Gate) -> ComputerBuilder {
+    pub fn add_gate(&mut self, gate_name: &'static str, gate: Gate) -> &mut ComputerBuilder {
         if self.gates.insert(gate_name, gate).is_some() {
             panic!(
                 "Gate name duplicata: \"{}\"", 
@@ -43,9 +45,9 @@ impl ComputerBuilder {
         self
     }
 
-    /*pub fn add_standard_gates(mut self) -> ComputerBuilder {
+    pub fn add_default_gates(&mut self) -> &mut ComputerBuilder {
         unimplemented!()
-    }*/
+    }
 
     /// Builds and returns a new `Computer` from the builder and consumes it.
     /// 
@@ -53,7 +55,7 @@ impl ComputerBuilder {
     /// 
     /// This function will panic if something goes wrong when initializing opencl,
     /// compiling the shader or allocating memory on the gpu.
-    pub fn build(self) -> Computer {
+    pub fn build(&mut self) -> Computer {
         let size = self.size;
         let dim = 1usize << size;
 
@@ -71,9 +73,17 @@ impl ComputerBuilder {
             .build()
             .expect("Cannot create measurements buffer");
 
-        let gates = self.gates;
+        let gates = {
+            let mut result = HashMap::with_capacity(0);
+            swap(&mut self.gates, &mut result);
+            result
+        };
 
-        let gates_inverses = self.gates_inverses;
+        let gates_inverses = {
+            let mut result = HashMap::with_capacity(0);
+            swap(&mut self.gates_inverses, &mut result);
+            result
+        };
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
             .arg(&main_buffer)
@@ -178,11 +188,13 @@ impl<'computer> Computer {
 
         let gates = HashMap::new();
         let gates_inverses = HashMap::new();
+        let built = false;
 
         ComputerBuilder {
             size,
             gates,
             gates_inverses,
+            built,
         }
     }
 
