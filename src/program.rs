@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::IntoIterator;
+use std::fmt;
 use std::mem::swap;
 
 use crate::computer::{Address, Computer};
@@ -469,6 +470,8 @@ impl<'a> ProgramBuilder<'a> {
             "Samples count cannot be 0"
         );
 
+        let size = self.computer.size;
+
         self.measured = true;
 
         let initial_state = self.initial_state;
@@ -482,6 +485,7 @@ impl<'a> ProgramBuilder<'a> {
         let samples = samples;
 
         Program {
+            size,
             initial_state,
             instructions,
             samples,
@@ -547,6 +551,7 @@ impl InstructionChain<Address> for ProgramBuilder<'_> {}
 
 #[derive(Debug)]
 pub struct Program {
+    size: Address,
     pub(crate) initial_state: usize,
     pub(crate) instructions: Box<[Instruction]>,
     pub(crate) samples: usize,
@@ -555,5 +560,44 @@ pub struct Program {
 impl Program {
     pub fn len(&self) -> usize {
         self.instructions.len()
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, 
+            "[\n  [Program with initial state |{:0size$b}>],\n  [Sample count of {}]",
+            self.initial_state,
+            size = self.size as usize,
+        ).unwrap();
+
+        let len = self.instructions.len();
+
+        if len != 0 {
+            write!(f, ",\n  [{} instructions:\n", len).unwrap();
+
+            let dec = len.to_string().len() - 1;
+
+            for (i, instruction) in self.instructions.iter().enumerate() {
+                write!(f,
+                    "    {:0dec$}: {} gate \"{}\" to qbit #{}{}{}\n",
+                    i,
+                    if instruction.reverse {"unapply"} else {"apply"},
+                    instruction.gate_name,
+                    instruction.target,
+                    if let Some(control) = instruction.control {
+                        format!(" with qbit #{} as control", control)
+                    } else {
+                        "".to_string()
+                    },
+                    if i+1 == len {""} else {","},
+                    dec = dec,
+                ).unwrap();
+            }
+
+            write!(f, "  ]\n]")
+        } else {
+            write!(f, "\n]")
+        }
     }
 }

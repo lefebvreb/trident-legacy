@@ -5,33 +5,28 @@ use std::time::Duration;
 
 use crate::computer::Address;
 
+//#################################################################################################
+//
+//                                      Measurement type
+//
+//#################################################################################################
+
 #[derive(PartialEq, PartialOrd)]
-struct StateFreq {
-    freq: usize,
+struct Measurement {
+    count: usize,
     state: u64,
-    percent: f32,
+    frequency: f64,
 }
 
-impl StateFreq {
-    fn new(freq: usize, state: u64, samples: usize) -> StateFreq {
-        StateFreq {
-            freq,
-            state,
-            percent: freq as f32 * 100.0 / samples as f32,
-        }
-    }
-}
+impl Eq for Measurement {}
 
-impl Eq for StateFreq {}
-
-impl Ord for StateFreq {
+impl Ord for Measurement {
     #[inline]
-    fn cmp(&self, other: &StateFreq) -> Ordering {
-        if self.freq == other.freq {
-            self.state.cmp(&other.state)
-        } else {
-            other.freq.cmp(&self.freq)
-        }        
+    fn cmp(&self, other: &Measurement) -> Ordering {
+        match other.count.cmp(&self.count) {
+            Ordering::Equal => self.state.cmp(&other.state),
+            unequal => unequal,
+        }   
     }
 }
 
@@ -40,8 +35,8 @@ pub struct Measurements {
     duration: Duration,
     size: Address,
     samples: usize,
-    measures: BTreeSet<StateFreq>,
-    min_percentile: Option<f32>,
+    measures: BTreeSet<Measurement>,
+    min_percentile: Option<f64>,
     max_display: Option<usize>,
 }
 
@@ -54,8 +49,12 @@ impl Measurements {
     ) -> Measurements {
         let measures = {
             let mut res = BTreeSet::new();
-            for (state, freq) in measures {
-                res.insert(StateFreq::new(freq, state, samples));
+            for (state, count) in measures {
+                res.insert(Measurement {
+                    count, 
+                    state, 
+                    frequency: count as f64 / samples as f64,
+                });
             }
             res
         };
@@ -73,12 +72,13 @@ impl Measurements {
         }
     }
 
-    /// Returns the total duration of the computation
+    /// Returns the total duration of the computation.
     pub fn duration(&self) -> Duration {
         self.duration
     }
 
-    /// Returns the `n` most frequent states measured, from most frequent to least frequent.
+    /// Returns the `n` most frequent states measured, and their frequency of apparition,
+    /// from most frequent to least frequent.
     /// If they was less than `n` different states measured, returns all of them.
     pub fn n_most(&self, n: usize) -> Box<[u64]> {
         self.measures.iter()
@@ -93,10 +93,10 @@ impl Measurements {
     /// - `max_display` is the maximum number of states that will be displayed. The rest will be
     /// hidden (default: `25`).
     /// 
-    /// Leave them to `None` to disable them.
+    /// Leave either or both to `None` to disable them.
     pub fn format_options<F, I>(&mut self, min_percentile: F, max_display: I) 
     where
-        F: Into<Option<f32>>,
+        F: Into<Option<f64>>,
         I: Into<Option<usize>>,
     {
         self.min_percentile = min_percentile.into();
@@ -106,37 +106,39 @@ impl Measurements {
 
 impl fmt::Display for Measurements {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f, 
-            "[Measurements obtained in {} ms]\n[Sample count of {}]\n[Top results:\n", 
+        write!(f, 
+            "[\n  [Measurements obtained in {} ms],\n  [Sample count of {}],\n  [Top results:\n", 
             self.duration.as_millis(),
             self.samples,
         ).unwrap();
+
+        let len = self.measures.len();
 
         let min = match self.min_percentile {
             Some(min) => min,
             None => 0.0,
         };
+
         let max = match self.max_display {
             Some(max) => max,
             None => self.samples,
         };
 
         for (i, pair) in self.measures.iter().enumerate() {
-            if pair.percent < min || i == max {
-                write!(f, "    and {} more...\n", self.measures.len() - i).unwrap();
+            if pair.frequency < min || i == max {
+                write!(f, "    and {} more...\n", len - i).unwrap();
                 break;
             }
 
-            write!(
-                f,
-                "    |{:0size$b}> ~> {:5.2}%,\n",
+            write!(f,
+                "    |{:0size$b}> ~> {:5.2}%{}\n",
                 pair.state,
-                pair.percent,
+                pair.frequency * 100.0,
+                if i+1 == len {""} else {","},
                 size = self.size as usize,
             ).unwrap();
         }
 
-        write!(f, "]")
+        write!(f, "  ]\n]")
     }
 }

@@ -1,9 +1,11 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
+e std::fmt;
 use std::mem::swap;
 use std::time::Instant;
 
+use crate::MEASUREMENTS_BLOCK;
 use crate::complex::c64;
 use crate::gates::Gate;
 use crate::measure::Measurements;
@@ -91,7 +93,7 @@ impl ComputerBuilder {
             .expect("Cannot create main buffer");
 
         let measurements_buffer = pro_que.buffer_builder()
-            .len(Computer::MEASUREMENTS_BLOCK)
+            .len(MEASUREMENTS_BLOCK)
             .build()
             .expect("Cannot create measurements buffer");
 
@@ -145,7 +147,7 @@ impl ComputerBuilder {
             .arg(&measurements_buffer)
             .arg(size)
             .arg(0u64)
-            .global_work_size(Computer::MEASUREMENTS_BLOCK)
+            .global_work_size(MEASUREMENTS_BLOCK)
             .build()
             .expect("Cannot build kernel `do_measurements`");
             
@@ -185,8 +187,6 @@ pub struct Computer {
 }
 
 impl<'computer> Computer {
-    const MEASUREMENTS_BLOCK: usize = 1024;
-
     /// Creates a new `ComputerBuilder` struct to begin the construction of a new `Computer`.
     /// 
     /// # Panics
@@ -304,27 +304,20 @@ impl<'computer> Computer {
             }
         }
 
-        // Display probabilites
-        /*{
-            let mut vec = vec![c64::ZERO; self.main_buffer.len()];
-            self.main_buffer.read(&mut vec).enq().unwrap();
-            println!("P = {:?}", vec);
-        }*/
-
         {
             let mut prng = MWC64X::new(seed.into());
             // Skips the first few numbers as they tend to be of poorer quality
-            prng.skip(16);
+            prng.skip(1000);
 
-            let mut buffer = vec![0; Computer::MEASUREMENTS_BLOCK];
+            let mut buffer = vec![0; MEASUREMENTS_BLOCK];
             let mut results = HashMap::with_capacity(program.samples);
             let mut remaining = program.samples;
 
             while remaining != 0 {
-                let measures = std::cmp::min(remaining, Computer::MEASUREMENTS_BLOCK);
+                let measures = std::cmp::min(remaining, MEASUREMENTS_BLOCK);
                 remaining -= measures;
 
-                prng.skip(Computer::MEASUREMENTS_BLOCK as u64);
+                prng.skip(MEASUREMENTS_BLOCK as u64);
                 self.do_measurements.set_arg(3, prng.state()).unwrap();
 
                 unsafe {
@@ -344,7 +337,7 @@ impl<'computer> Computer {
                     }
                 }
             }
-
+        
             Measurements::new(
                 Instant::now().duration_since(start),
                 self.size,
@@ -352,5 +345,32 @@ impl<'computer> Computer {
                 results,
             )
         }
+    }
+}
+
+/*
+/// Represents a quantum computer, with it's memory and capabilities.
+pub struct Computer {
+    pub(crate) size: Address,
+    pub(crate) gates: HashMap<&'static str, Gate>,
+    pub(crate) gates_inverses: HashMap<&'static str, Gate>,
+    main_buffer: Buffer<c64>,
+    measurements_buffer: Buffer<u64>,
+    apply_gate: Kernel,
+    apply_controlled_gate: Kernel,
+    calculate_probabilities: Kernel,
+    reduce_distribution: Kernel,
+    do_measurements: Kernel,
+}
+*/
+
+impl fmt::Display for Computer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, 
+            "[\n  [Computer of size {}],\n  [Memory usage: {} bytes],\n  [Available gates: {:?}]\n]",
+            self.size,
+            ((1usize << self.size) + MEASUREMENTS_BLOCK) * 8,
+            self.gates.keys().map(|s| *s).collect::<Box<[&'static str]>>(),
+        )
     }
 }

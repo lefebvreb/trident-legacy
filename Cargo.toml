@@ -7,5 +7,5 @@ edition = "2018"
 [profile.dev]
 overflow-checks = false 
 
-[dependencies.ocl]
-version = "0.19.3"
+[dependencies]
+ocl = "0.19.3"

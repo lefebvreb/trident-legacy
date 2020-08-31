@@ -49,7 +49,7 @@ impl Gate {
         gate
     }
 
-    /// Unsafe version of the Gate::new function. Serves the same purpose and does the same thing, but
+    /// Unsafe version of the `Gate::new` function. Serves the same purpose and does the same thing, but
     /// will not panic if the given matrix is not unitary.
     #[inline]
     pub unsafe fn new_unchecked<E1, E2, E3, E4>(u00: E1, u01: E2, u10: E3, u11: E4) -> Gate
@@ -67,7 +67,12 @@ impl Gate {
         }
     }
 
-    #[inline]
+    pub fn phase_shift(phi: f32) -> Gate {
+        unsafe {
+            Gate::new_unchecked(1, 0, 0, c64::new_euler(1.0, phi))
+        }
+    }   
+
     pub fn invert(&self) -> Gate {
         let (a, b, c, d) = (self.u00, self.u01, self.u10, self.u11);
 

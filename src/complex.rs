@@ -25,24 +25,14 @@ impl c64 {
 
     /// Constructs a new complex from it's real part and imaginary part.
     #[inline]
-    pub fn new<R, I>(re: R, im: I) -> c64
-    where
-        R: Into<f32>,
-        I: Into<f32>,
-    {
-        c64(re.into(), im.into())
+    pub fn new(re: f32, im: f32) -> c64 {
+        c64(re, im)
     }
 
     /// Constructs a new complex from it's radius and argument.
     #[inline]
-    pub fn new_euler<R, A>(r: R, arg: A) -> c64
-    where
-        R: Into<f32>,
-        A: Into<f32>,
-    {
-        let r = r.into();
-        let arg = arg.into();
-        c64(r * arg.cos(), r * arg.sin())
+    pub fn new_euler(r: f32, arg: f32) -> c64 {
+        c64(r*arg.cos(), r*arg.sin())
     }
 
     /// Returns the complex conjugate of `self`.
@@ -87,30 +77,22 @@ unsafe impl ocl::traits::OclPrm for c64 {}
 //#################################################################################################
 
 macro_rules! impl_from_primitive {
-    {$from: ty} => {
-        impl From<$from> for c64 {
-            fn from(x: $from) -> c64 {
-                c64(x as f32, 0.0)
+    {$($from: ty),*} => {
+        $(
+            impl From<$from> for c64 {
+                fn from(x: $from) -> c64 {
+                    c64(x as f32, 0.0)
+                }
             }
-        }
+        )*        
     };
 }
 
-impl_from_primitive! {i8}
-impl_from_primitive! {u8}
-impl_from_primitive! {i16}
-impl_from_primitive! {u16}
-impl_from_primitive! {i32}
-impl_from_primitive! {u32}
-impl_from_primitive! {i64}
-impl_from_primitive! {u64}
-impl_from_primitive! {isize}
-impl_from_primitive! {usize}
-impl_from_primitive! {i128}
-impl_from_primitive! {u128}
-
-impl_from_primitive! {f32}
-impl_from_primitive! {f64}
+impl_from_primitive! {
+    i8, i16, i32, i64, i128, isize,
+    u8, u16, u32, u64, u128, usize,
+    f32, f64
+}
 
 impl fmt::Debug for c64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

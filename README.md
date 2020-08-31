@@ -16,7 +16,6 @@ Built on top of [ocl](https://github.com/cogciprocate/ocl) (OpenCL bindings for 
 + Subroutine system to reuse circuits inside a program.
 + Automatic generation of controlled versions of gates.
 + Automatic generation of inverse gates and subroutines allowing easy uncomputation.
-+ O(n) algorithm for measurements making sampling quick and effective.
 
 ## Getting started
 
@@ -60,9 +59,14 @@ Output:
     |111> ~> 12.48%,
     |110> ~> 12.44%,
     |101> ~> 12.42%,
-    |001> ~> 12.32%,
+    |001> ~> 12.32%
 ]
 ```
+
+## Roadmap
+
++ Replace the command chains by some attribute macros to turn normal rust code into quantum code (trident 2).
++ Replace [ocl](https://github.com/cogciprocate/ocl) by a more modern crate langage like [gfx-rs](https://github.com/gfx-rs/gfx) or [vulkano](https://github.com/vulkano-rs/vulkano). Replace the OpenCL shader by a more modern shader langage as well, like Vulkano or SPIR-V.
 
 ## References
 

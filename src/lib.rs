@@ -1,8 +1,5 @@
 // TODO
 
-// Phase shift gate constructor
-// Impl Display for computer, program...
-// Bench and maybe improve random generator
 // Tests
 // Examples
 // Comment code
@@ -10,7 +7,6 @@
 // Two times controlled gates ?
 // Benches ?
 // Constify ?
-// Do kernel computation with double precision ?
 // Publish ??
 
 // cargo doc --no-deps --open
@@ -24,6 +20,8 @@ mod gates;
 mod measure;
 mod program;
 mod random;
+
+const MEASUREMENTS_BLOCK: usize = 1024;
 
 #[inline]
 pub(crate) fn approx_eq(x: f32, y: f32) -> bool {

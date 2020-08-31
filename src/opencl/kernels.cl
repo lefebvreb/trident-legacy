@@ -40,9 +40,7 @@ static inline size_t index(
 static inline ulong modular_add64(ulong a, ulong b, ulong m) {
     ulong res = a + b;
 
-    if ((res >= m) || (res < a)) {
-        res -= m;
-    }
+    if ((res >= m) || (res < a)) res -= m;
 
     return res;
 }
@@ -52,9 +50,7 @@ static inline ulong modular_mul64(ulong a, ulong b, ulong m) {
     ulong res = 0;
 
     while (a) {
-        if (a & 1) {
-            res = modular_add64(res, b, m);
-        }
+        if (a & 1) res = modular_add64(res, b, m);
         b = modular_add64(b, b, m);
         a >>= 1;
     }
@@ -67,9 +63,7 @@ static inline ulong modular_pow64(ulong a, ulong e, ulong m) {
     ulong sqr = a, acc = 1;
 
     while (e) {
-        if (e & 1) {
-            acc = modular_add64(acc, sqr, m);
-        }
+        if (e & 1) acc = modular_add64(acc, sqr, m);
         sqr = modular_add64(sqr, sqr, m);
         e >>= 1;
     }
