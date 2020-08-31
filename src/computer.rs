@@ -1,7 +1,7 @@
 use ocl::{Buffer, Kernel, ProQue};
 
 use std::collections::HashMap;
-e std::fmt;
+use std::fmt;
 use std::mem::swap;
 use std::time::Instant;
 
