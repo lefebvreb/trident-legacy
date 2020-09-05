@@ -1,5 +1,9 @@
 // TODO
 
+// DEBUGGER !!!
+
+// Replace swap by take
+// Remove useless 'static
 // Tests
 // Examples
 // Comment code
@@ -12,6 +16,7 @@
 // cargo doc --no-deps --open
 
 extern crate ocl;
+extern crate num_complex;
 
 // Modules
 mod complex;
@@ -21,7 +26,7 @@ mod measure;
 mod program;
 mod random;
 
-const MEASUREMENTS_BLOCK: usize = 1024;
+const MEASUREMENTS_BLOCK: usize = 16;
 
 #[inline]
 pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
@@ -29,7 +34,7 @@ pub(crate) fn approx_eq(x: f32, y: f32) -> bool {
 }
 
 // Exports
-pub use complex::c64;
+pub use num_complex::Complex32;
 pub use computer::{Address, Computer, ComputerBuilder};
 pub use gates::Gate;
 pub use measure::Measurements;

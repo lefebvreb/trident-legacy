@@ -89,6 +89,8 @@ impl ComputerBuilder {
             .build()
             .expect("Cannot build compute shader");
 
+        //println!("{:?}", pro_que.device().info(ocl::enums::DeviceInfo::Extensions)); panic!();
+
         let main_buffer = pro_que.create_buffer()
             .expect("Cannot create main buffer");
 
@@ -111,6 +113,7 @@ impl ComputerBuilder {
 
         let apply_gate = pro_que.kernel_builder("apply_gate")
             .arg(&main_buffer)
+            .arg(size)
             .arg(0u8)
             .arg(c64::ZERO)
             .arg(c64::ZERO)
@@ -121,6 +124,7 @@ impl ComputerBuilder {
 
         let apply_controlled_gate = pro_que.kernel_builder("apply_controlled_gate")
             .arg(&main_buffer)
+            .arg(size)
             .arg(0u8)
             .arg(c64::ZERO)
             .arg(c64::ZERO)
@@ -186,7 +190,7 @@ pub struct Computer {
     do_measurements: Kernel,
 }
 
-impl<'computer> Computer {
+impl Computer {
     /// Creates a new `ComputerBuilder` struct to begin the construction of a new `Computer`.
     /// 
     /// # Panics
@@ -262,24 +266,30 @@ impl<'computer> Computer {
 
             let kernel = if let Some(control) = instruction.control {
                 let kernel = &self.apply_controlled_gate;
-                kernel.set_arg(6, control).unwrap();
+                kernel.set_arg(7, control).unwrap();
                 kernel
             } else {
                 &self.apply_gate
             };
 
-            kernel.set_arg(1, target).unwrap();
+            kernel.set_arg(2, target).unwrap();
 
-            kernel.set_arg(2, gate.u00).unwrap();
-            kernel.set_arg(3, gate.u01).unwrap();
-            kernel.set_arg(4, gate.u10).unwrap();
-            kernel.set_arg(5, gate.u11).unwrap();
+            kernel.set_arg(3, gate.u00).unwrap();
+            kernel.set_arg(4, gate.u01).unwrap();
+            kernel.set_arg(5, gate.u10).unwrap();
+            kernel.set_arg(6, gate.u11).unwrap();
 
             unsafe { 
                 kernel.enq()
                     .expect("Cannot call kernel `apply_gate` or `apply_gate_controlled`");
             }
         }
+
+        /*{
+            let mut buff = vec![c64::ZERO; 1usize << self.size];
+            self.main_buffer.read(&mut buff).enq().unwrap();
+            println!("{:?}", buff);
+        }*/
 
         // Calculate the probabilities vector
         unsafe { 
@@ -347,22 +357,6 @@ impl<'computer> Computer {
         }
     }
 }
-
-/*
-/// Represents a quantum computer, with it's memory and capabilities.
-pub struct Computer {
-    pub(crate) size: Address,
-    pub(crate) gates: HashMap<&'static str, Gate>,
-    pub(crate) gates_inverses: HashMap<&'static str, Gate>,
-    main_buffer: Buffer<c64>,
-    measurements_buffer: Buffer<u64>,
-    apply_gate: Kernel,
-    apply_controlled_gate: Kernel,
-    calculate_probabilities: Kernel,
-    reduce_distribution: Kernel,
-    do_measurements: Kernel,
-}
-*/
 
 impl fmt::Display for Computer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
