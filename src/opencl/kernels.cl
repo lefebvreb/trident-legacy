@@ -96,35 +96,28 @@ static inline float random(
 // Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the buffer
 kernel void apply_gate(
     global float2 *buffer,
-    const uchar size,
     const uchar target,
     const float2 u00,
     const float2 u01,
     const float2 u10,
     const float2 u11
 ) {
-    const size_t i = get_global_id(0);
+    const size_t global_id = get_global_id(0);
 
-    const uchar r = size - target - 1;
-    
-    const size_t pow = (size_t) 1 << r;
-    const size_t div = i >> (r + 1);
+    const size_t zero_state = nth_cleared(global_id, target);
+    const size_t one_state  = zero_state | ((size_t) 1 << target);
 
-    const size_t j = (div * (2 << r)) + (i & (pow-1));
-    const size_t k = j + pow;
+    const float2 zero_amp = buffer[zero_state];
+    const float2 one_amp  = buffer[one_state];
 
-    if ((i & ((pow << 1)-1)) < pow) {
-        buffer[i] = complex_mul(u00, buffer[j]) + complex_mul(u01, buffer[k]);
-    } else {
-        buffer[i] = complex_mul(u10, buffer[j]) + complex_mul(u11, buffer[k]);
-    }
+    buffer[zero_state] = complex_mul(u00, zero_amp) + complex_mul(u01, one_amp);
+    buffer[one_state]  = complex_mul(u10, zero_amp) + complex_mul(u11, one_amp);
 }
 
 // Apply the gate [[u00, u01], [u10, u11]] to the #target qbit of the buffer
 // with qbit #control as control 
 kernel void apply_controlled_gate(
     global float2 *buffer,
-    const uchar size,
     const uchar target,
     const float2 u00,
     const float2 u01,

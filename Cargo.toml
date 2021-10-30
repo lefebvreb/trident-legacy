@@ -1,6 +1,11 @@
-[workspace]
-members = [
-	"trident-core",
-	"trident-vqc",
-	"trident",
-]
+[package]
+name = "trident"
+version = "0.1.0"
+authors = ["benjamin <benji.lef76@gmail.com>"]
+edition = "2018"
+
+[profile.dev]
+overflow-checks = false 
+
+[dependencies]
+ocl = "0.19.3"
